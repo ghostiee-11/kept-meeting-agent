@@ -359,9 +359,11 @@ class MockTask(Base, TimestampMixin):
         _enum(TaskStatus, "task_status"), nullable=False, default=TaskStatus.TODO
     )
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
-    source_commitment_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("commitments.id", ondelete="SET NULL")
-    )
+    source_commitment_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
+    """Deliberately not a foreign key. This table stands in for Linear or Jira,
+    and a real tracker holds our identifier as an opaque reference in a custom
+    field. A constraint here would couple the "external" system to our schema
+    and quietly make the integration easier than the real one."""
     history: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
 
 

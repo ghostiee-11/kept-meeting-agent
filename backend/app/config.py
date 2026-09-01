@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     mock_failure_rate: float = 0.0
     """Fraction of mock task API calls that fail, so retry and circuit-breaker
     behaviour is demonstrable rather than merely claimed."""
+
+    mock_failure_mode: Literal["pre", "post", "random"] = "pre"
+    """`pre` fails before any work, so a plain retry recovers. `post` commits
+    and then fails, which is what a real API does when it times out on the way
+    back: only an idempotency key prevents a duplicate task."""
+
     mock_latency_ms: int = 0
 
     # ---- Internal jobs -----------------------------------------------------

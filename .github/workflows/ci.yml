@@ -16,6 +16,25 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      # Real Postgres with pgvector rather than SQLite, because the schema uses
+      # JSONB, arrays, sequences, and vector columns. A substitute engine would
+      # let a migration break in production while CI stayed green.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: kept
+          POSTGRES_PASSWORD: kept
+          POSTGRES_DB: kept_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://kept:kept@localhost:5432/kept_test
     steps:
       - uses: actions/checkout@v5
 

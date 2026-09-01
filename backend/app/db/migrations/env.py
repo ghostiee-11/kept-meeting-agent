@@ -35,6 +35,18 @@ if _raw_url is None:
 _url, _connect_args = build_engine_url(_raw_url.get_secret_value())
 config.set_main_option("sqlalchemy.url", _url)
 
+# Indexes SQLAlchemy cannot describe, so autogenerate must not try to drop them.
+# The HNSW index uses pgvector operator classes that have no Core equivalent.
+HAND_WRITTEN_INDEXES = frozenset({"ix_commitments_embedding_cosine"})
+
+
+def include_object(
+    obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
+) -> bool:
+    if type_ == "index" and name in HAND_WRITTEN_INDEXES:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -44,6 +56,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -55,6 +68,7 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
