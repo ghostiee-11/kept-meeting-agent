@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health
 from app.config import get_settings
+from app.db.session import create_engine, create_session_factory
 from app.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -19,13 +20,26 @@ log = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(level=settings.log_level, json_output=settings.app_env != "local")
+
+    # The database is optional at boot so the app still starts, and /health
+    # still explains itself, when DATABASE_URL is missing.
+    app.state.engine = None
+    app.state.session_factory = None
+    if settings.database_url is not None:
+        app.state.engine = create_engine(settings)
+        app.state.session_factory = create_session_factory(app.state.engine)
+
     log.info(
         "startup",
         environment=settings.app_env,
         version=settings.git_sha,
         providers=settings.configured_providers,
+        database=settings.database_url is not None,
     )
     yield
+
+    if app.state.engine is not None:
+        await app.state.engine.dispose()
     log.info("shutdown")
 
 

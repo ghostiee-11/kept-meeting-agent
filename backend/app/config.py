@@ -82,6 +82,19 @@ class Settings(BaseSettings):
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "kept"
 
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """An empty env var means "not configured", not "configured as empty".
+
+        `.env.example` lists every key with a blank value, so without this a
+        copied file would report all three model providers as available and the
+        router would try to call one with no credentials.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:

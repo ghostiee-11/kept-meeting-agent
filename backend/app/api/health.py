@@ -8,17 +8,38 @@ whether one is present.
 
 from __future__ import annotations
 
+import asyncio
 import time
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from sqlalchemy import text
 
-from app.config import Settings, get_settings
+from app.deps import SettingsDep
+from app.logging import get_logger
 
 router = APIRouter(tags=["ops"])
+log = get_logger(__name__)
 
 _STARTED_AT = time.monotonic()
+
+# Neon scales compute to zero after five minutes idle, so a first query can be
+# slow. Long enough to let it wake, short enough that health never hangs.
+_DB_PROBE_TIMEOUT_SECONDS = 8.0
+
+
+async def _database_reachable(request: Request) -> bool:
+    factory = getattr(request.app.state, "session_factory", None)
+    if factory is None:
+        return False
+    try:
+        async with asyncio.timeout(_DB_PROBE_TIMEOUT_SECONDS), factory() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as exc:
+        log.warning("health.database_unreachable", error=str(exc))
+        return False
+    return True
 
 
 class HealthResponse(BaseModel):
@@ -34,18 +55,24 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
+async def health(settings: SettingsDep, request: Request) -> HealthResponse:
     providers = settings.configured_providers
+    database = await _database_reachable(request)
     notes: list[str] = []
 
     if not any(providers.values()):
         notes.append("No model provider credentials configured; agent runs will fail.")
+    if settings.database_url is None:
+        notes.append("DATABASE_URL unset; nothing will be persisted.")
+    elif not database:
+        notes.append("DATABASE_URL is set but the database did not answer.")
     if settings.is_production and settings.demo_key is None:
         notes.append("Production deployment without a demo key: write endpoints are unprotected.")
     if not settings.tavily_api_key:
         notes.append("Tavily unset; web search falls back to the keyless provider.")
 
-    status: Literal["ok", "degraded"] = "ok" if any(providers.values()) else "degraded"
+    healthy = any(providers.values()) and (settings.database_url is None or database)
+    status: Literal["ok", "degraded"] = "ok" if healthy else "degraded"
 
     return HealthResponse(
         status=status,
@@ -55,6 +82,6 @@ async def health(settings: Annotated[Settings, Depends(get_settings)]) -> Health
         auth_enforced=settings.demo_key is not None,
         providers=providers,
         web_search=settings.tavily_api_key is not None,
-        database=settings.database_url is not None,
+        database=database,
         notes=notes,
     )

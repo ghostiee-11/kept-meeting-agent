@@ -55,3 +55,17 @@ def test_cors_origins_accept_comma_separated_string(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("CORS_ORIGINS", "https://a.vercel.app, https://b.vercel.app")
 
     assert Settings().cors_origins == ["https://a.vercel.app", "https://b.vercel.app"]
+
+
+def test_blank_env_var_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """.env.example lists every key blank. A copied file must not report all
+    three providers as available and send the router at one with no key."""
+    monkeypatch.setenv("GROQ_API_KEY", "real-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "   ")
+
+    assert Settings().configured_providers == {
+        "groq": True,
+        "google": False,
+        "openai": False,
+    }
