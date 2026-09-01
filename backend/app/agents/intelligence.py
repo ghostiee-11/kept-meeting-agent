@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any
 
 from langchain.tools import tool
 from langchain_core.tools import BaseTool
@@ -41,8 +41,6 @@ from app.services.segmentation import Turn, turn_texts
 from app.services.verifier import verify_evidence
 
 log = get_logger(__name__)
-
-GroundedT = TypeVar("GroundedT", bound=Grounded)
 
 
 class Brief(StrEnum):
@@ -206,7 +204,7 @@ async def extract(
     )
 
 
-def _ground(
+def _ground[GroundedT: Grounded](
     batch: Any,
     transcript: str,
     windows: list[str],

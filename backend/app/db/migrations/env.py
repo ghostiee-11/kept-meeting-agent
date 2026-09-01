@@ -43,9 +43,7 @@ HAND_WRITTEN_INDEXES = frozenset({"ix_commitments_embedding_cosine"})
 def include_object(
     obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
 ) -> bool:
-    if type_ == "index" and name in HAND_WRITTEN_INDEXES:
-        return False
-    return True
+    return not (type_ == "index" and name in HAND_WRITTEN_INDEXES)
 
 
 def run_migrations_offline() -> None:

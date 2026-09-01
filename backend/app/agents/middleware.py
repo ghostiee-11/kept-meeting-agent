@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 
@@ -42,10 +43,8 @@ def _emit(event: dict[str, Any]) -> None:
     `get_stream_writer` raises outside a graph run, which is exactly what
     happens in unit tests and the CLI, so a failure here is not interesting.
     """
-    try:
+    with suppress(Exception):
         get_stream_writer()(event)
-    except Exception:
-        pass
 
 
 class CostMeterMiddleware(AgentMiddleware[Any, Any]):

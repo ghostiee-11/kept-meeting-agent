@@ -47,6 +47,13 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["B008"]  # FastAPI Depends() in defaults is the framework idiom
 
+[tool.ruff.lint.per-file-ignores]
+# The folding table exists precisely to recognise curly quotes, en dashes, and
+# non-breaking spaces, so flagging them as ambiguous is the lint misreading the
+# intent rather than finding a problem.
+"app/services/verifier.py" = ["RUF001"]
+"tests/test_verifier.py" = ["RUF001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
