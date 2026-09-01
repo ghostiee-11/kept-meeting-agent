@@ -208,13 +208,29 @@ class ModelRouter:
         spec = self.primary(tier)
         return self.build_spec(spec, temperature=temperature, **kwargs)
 
+    def _api_key(self, provider: Provider) -> str:
+        secret = {
+            Provider.GROQ: self._settings.groq_api_key,
+            Provider.GOOGLE: self._settings.google_api_key,
+            Provider.OPENAI: self._settings.openai_api_key,
+        }[provider]
+        if secret is None:
+            raise NoModelAvailableError(f"No API key configured for {provider.value}.")
+        return secret.get_secret_value()
+
     def build_spec(
         self, spec: ModelSpec, *, temperature: float = 0.0, **kwargs: Any
     ) -> BaseChatModel:
+        # The key is passed explicitly rather than exported to os.environ.
+        # Provider SDKs read the process environment by default, and settings
+        # come from a .env file that pydantic-settings deliberately does not
+        # leak into it. Mutating global state to bridge that gap would make
+        # which credentials a call used depend on import order.
         model: BaseChatModel = init_chat_model(
             spec.model_id,
             model_provider=_LANGCHAIN_PROVIDER[spec.provider],
             temperature=temperature,
+            api_key=self._api_key(spec.provider),
             **kwargs,
         )
         return model
