@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     concurrency is the point of splitting the briefs in the first place."""
 
     # ---- Mock task API -----------------------------------------------------
+    self_base_url: str = "http://127.0.0.1:8000"
+    """Where the mock task API lives. The Operator calls it over real HTTP
+    rather than in process, so timeouts, retries, and idempotency are exercised
+    for real. On Render this is the service's own external URL."""
+
     mock_failure_rate: float = 0.0
     """Fraction of mock task API calls that fail, so retry and circuit-breaker
     behaviour is demonstrable rather than merely claimed."""

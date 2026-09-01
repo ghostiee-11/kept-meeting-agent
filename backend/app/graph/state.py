@@ -80,6 +80,7 @@ class MeetingState(MessagesState):
     meeting_id: str
     run_id: str
     transcript: str
+    meeting_title: str
     turn_texts: list[str]
     """Windows the Verifier searches when repairing a near-miss quote. Named
     to match what GroundingMiddleware reads out of agent state."""

@@ -28,6 +28,7 @@ from langgraph.types import Command
 
 from app.agents import prompts
 from app.agents.base import AgentSpec, build_agent
+from app.agents.execution import create_tasks, draft_communications
 from app.agents.handoff import handoff_tools
 from app.agents.intelligence import extract, review
 from app.agents.resolution import enrich_decisions, resolve_deadlines, resolve_owners
@@ -140,8 +141,25 @@ def build_meeting_graph(
         # message that a shared history produces across a subgraph boundary.
         await chief.ainvoke({"messages": [{"role": "user", "content": _summarise(state)}]})
 
-        # Reaching here means the supervisor did not call a handoff tool, so
-        # there is nothing left for it to route to.
+        # Reaching here means the supervisor returned without calling a handoff
+        # tool. If work remains, that is a routing mistake rather than a
+        # decision, so the graph advances anyway.
+        #
+        # This is the shape worth defending: the model's judgment is what
+        # matters at the genuinely open decisions (re-extract, escalate, stop
+        # early), and deterministic sequencing guarantees progress everywhere
+        # else. An agent that quietly abandons two thirds of the work because a
+        # small model lost its place is not a system anybody should deploy.
+        remaining = [team for team in TEAMS if team not in _completed_teams(state)]
+        if remaining:
+            log.info("chief.no_route", advancing_to=remaining[0])
+            trace.record(
+                "chief_of_staff",
+                "handoff",
+                payload={"to": remaining[0], "reason": "no route chosen; advancing"},
+            )
+            return Command(goto=remaining[0])
+
         return Command(
             goto=END,
             update={"final_summary": state.get("final_summary") or "Run ended without a summary."},
@@ -294,14 +312,42 @@ def build_meeting_graph(
             for index, item in enumerate(state.get("items", []))
         ]
 
-        at_risk = sum(1 for item in scored if item.risk and item.risk.band != "low")
-        summary = f"execution: {len(scored)} scored, {at_risk} at risk"
+        outcomes = await create_tasks(scored, base_url=settings.self_base_url)
+        with_tasks = [
+            ResolvedItem(
+                commitment=outcome.item.commitment,
+                attribution=outcome.item.attribution,
+                deadline=outcome.item.deadline,
+                risk=outcome.item.risk,
+                external_task_id=outcome.external_id,
+            )
+            for outcome in outcomes
+        ]
+
+        drafts = await draft_communications(
+            with_tasks,
+            [decision.statement for decision in state.get("decisions", [])],
+            state.get("questions", []),
+            meeting_title=state.get("meeting_title", "Meeting"),
+            router=router,
+            settings=settings,
+        )
+
+        at_risk = sum(1 for item in with_tasks if item.risk and item.risk.band != "low")
+        created = sum(1 for outcome in outcomes if outcome.external_id)
+        skipped = sum(1 for outcome in outcomes if outcome.skipped_because)
+        summary = (
+            f"execution: {len(with_tasks)} scored, {at_risk} at risk, "
+            f"{created} tasks created"
+            + (f", {skipped} skipped for having no owner" if skipped else "")
+        )
         trace.record("execution", "artifact", payload={"summary": summary})
 
         return Command(
             goto="chief_of_staff",
             update={
-                "items": scored,
+                "items": with_tasks,
+                "communications": drafts,
                 "progress": [summary],
             },
         )

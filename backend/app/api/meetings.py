@@ -116,6 +116,7 @@ async def run_meeting(
             turns=turns,
             roster=roster,
             timezone=payload.timezone,
+            meeting_title=payload.title,
             reused_meeting=not is_new,
         ),
         media_type="text/event-stream",
@@ -140,6 +141,7 @@ async def _stream_run(
     turns: list[Any],
     roster: list[RosterEntry],
     timezone: str,
+    meeting_title: str,
     reused_meeting: bool,
 ) -> AsyncIterator[str]:
     """Drive the graph, forwarding every agent event to the browser.
@@ -171,6 +173,7 @@ async def _stream_run(
                 "meeting_id": str(meeting_id),
                 "run_id": str(run_id),
                 "transcript": transcript,
+                "meeting_title": meeting_title,
                 "turn_texts": turn_texts(turns),
                 "turns": turns,
                 "roster": roster,
