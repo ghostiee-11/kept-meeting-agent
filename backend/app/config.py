@@ -46,6 +46,10 @@ class Settings(BaseSettings):
 
     # ---- Persistence -------------------------------------------------------
     database_url: SecretStr | None = None
+    database_url_unpooled: SecretStr | None = None
+    """Neon's direct endpoint. Migrations use it because pgbouncer in
+    transaction mode does not support the prepared statements Alembic issues."""
+
     db_pool_size: int = 3
     """Render free tier is 0.1 CPU / 512MB and Neon free caps connections.
     A small pool is deliberate, not an oversight."""

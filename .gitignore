@@ -32,3 +32,5 @@ Screenshot*.png
 
 # Eval scratch output (committed results live in evals/results/)
 evals/.cache/
+.playwright-mcp/
+.neon

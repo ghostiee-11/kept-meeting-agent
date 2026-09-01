@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+/*
+  Kept design tokens.
+
+  The concept is a ledger. Kept is a book of accounts for promises, so the
+  system borrows accounting's own materials: greenbar ruling, red ink for debt,
+  green ink for settled. The default surface is that ledger photographed at
+  night, which is why the ground is an ink blue-black rather than a neutral
+  near-black, and why the foreground is warm paper rather than grey.
+
+  Two accents, not one, because double-entry needs both: `debt` marks anything
+  slipping and `kept` marks anything settled. Neither is ever decorative.
+*/
+
+:root {
+  --ground: #0b1014;
+  --surface: #131b21;
+  --surface-raised: #1a242c;
+  --rule: #22303a;
+  --rule-strong: #33454f;
+
+  --paper: #e8e4da;
+  --paper-dim: #a9b0b5;
+  --paper-muted: #737d84;
+
+  --debt: #c4463a;
+  --debt-dim: #7a2a24;
+  --kept: #6e9a78;
+  --kept-dim: #3a5240;
+  --pending: #c9974a;
+
+  --focus: #7fa8c4;
+
+  /* Greenbar ruling: the faint alternating band of accounting paper. */
+  --band: rgba(110, 154, 120, 0.035);
+}
+
+/*
+  Light is greenbar paper, not a washed-out dark theme: warm off-white with the
+  same faint green ruling. The `:not([data-theme="dark"])` guard lets an
+  explicit choice win over the system preference in both directions.
+*/
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f7f5ef;
+    --surface: #ffffff;
+    --surface-raised: #fbfaf6;
+    --rule: #dedad0;
+    --rule-strong: #c3beb2;
+
+    --paper: #1b2227;
+    --paper-dim: #4d565d;
+    --paper-muted: #7b848b;
+
+    --debt: #a8352a;
+    --debt-dim: #e8c9c5;
+    --kept: #3f6b4a;
+    --kept-dim: #cadbcd;
+    --pending: #8a6320;
+
+    --focus: #2f6b91;
+
+    --band: rgba(63, 107, 74, 0.045);
+  }
+}
+
+:root[data-theme="light"] {
+  --ground: #f7f5ef;
+  --surface: #ffffff;
+  --surface-raised: #fbfaf6;
+  --rule: #dedad0;
+  --rule-strong: #c3beb2;
+
+  --paper: #1b2227;
+  --paper-dim: #4d565d;
+  --paper-muted: #7b848b;
+
+  --debt: #a8352a;
+  --debt-dim: #e8c9c5;
+  --kept: #3f6b4a;
+  --kept-dim: #cadbcd;
+  --pending: #8a6320;
+
+  --focus: #2f6b91;
+
+  --band: rgba(63, 107, 74, 0.045);
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-paper-muted: var(--paper-muted);
+
+  --color-debt: var(--debt);
+  --color-debt-dim: var(--debt-dim);
+  --color-kept: var(--kept);
+  --color-kept-dim: var(--kept-dim);
+  --color-pending: var(--pending);
+  --color-band: var(--band);
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+}
+
+html {
+  color-scheme: dark light;
+}
+
+body {
+  background: var(--ground);
+  color: var(--paper);
+  font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+  Type scale. Dense by design: this is an operator console, not a landing page.
+  The display face is Archivo at its Expanded width, which reads institutional
+  without reaching for a serif.
+*/
+.t-display {
+  font-family: var(--font-archivo), sans-serif;
+  font-variation-settings: "wdth" 118;
+  font-weight: 700;
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.t-heading {
+  font-family: var(--font-archivo), sans-serif;
+  font-variation-settings: "wdth" 112;
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+
+.t-eyebrow {
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--paper-muted);
+}
+
+.t-data {
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Every focusable element gets a visible ring. Non-negotiable. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

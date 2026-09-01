@@ -3,7 +3,9 @@ services:
     name: kept-api
     runtime: python
     plan: free
-    region: singapore
+    # Ohio, because the Neon project lives in aws-us-east-2. Putting the API in
+    # another continent would add a round trip to every query on a 0.1 CPU box.
+    region: ohio
     rootDir: backend
     buildCommand: pip install uv && uv sync --frozen --no-dev
     # Free tier is 0.1 CPU / 512MB. A single worker is deliberate: extra workers
@@ -22,6 +24,8 @@ services:
           property: commitId
       # Everything below is set in the Render dashboard, not in this file.
       - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
         sync: false
       - key: DEMO_KEY
         sync: false
