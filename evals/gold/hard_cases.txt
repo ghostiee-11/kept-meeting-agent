@@ -1,0 +1,20 @@
+Meera: Right, let's start. Migration first. Priya, where are we?
+Priya: Staging is back up. I'll have the migration plan ready by Friday.
+Adit: Someone should probably look at the caching layer at some point.
+Meera: Noted. Not this sprint though.
+Tom: I won't be able to get to the design review this week, I'm out Thursday and Friday.
+Meera: That's fine, it can wait.
+Rahul: If legal signs off on the data residency question, I'll ship the EU region on Monday.
+Meera: Good. Sana, marketing said they'd handle the launch copy, right?
+Sana: That's what they told me, yes.
+Meera: OK. Priya, can you also own the vendor call with Vanta?
+Priya: Sure, I'll take it.
+Adit: We could just tell the client we'll have it by Q3 and figure it out later.
+Meera: We're not doing that.
+Tom: Should I just redo the onboarding flow myself?
+Meera: Let's decide that next week.
+Priya: Actually, scratch the Friday date on the migration plan. Staging is flaky again, I'll get it to you Tuesday instead.
+Meera: Fine. Last thing, we're going with Postgres over Mongo. The joins are worth more than the flexibility.
+Adit: Agreed.
+Meera: Someone needs to update the architecture doc.
+Rahul: We'll get that sorted.

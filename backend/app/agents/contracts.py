@@ -94,7 +94,14 @@ class ExtractedDecision(Grounded):
 
 
 class ExtractedCommitment(Grounded):
-    text: str = Field(description="The obligation, in one sentence, in the speaker's terms.")
+    text: str = Field(
+        description=(
+            "The task, in one sentence. What will be done, and to what. Someone "
+            "reading only this line three weeks later must know what to do. Not "
+            'the words of acceptance: "Own the vendor call with Vanta", never '
+            '"Sure, I\'ll take it".'
+        )
+    )
     classification: Classification = Field(description="Which of the five classes this is.")
     reasoning: str = Field(
         description="One sentence on why this class and not the neighbouring one."

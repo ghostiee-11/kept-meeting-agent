@@ -23,6 +23,7 @@ from langchain.agents.middleware import (
     PIIMiddleware,
     ToolCallLimitMiddleware,
 )
+from langchain.agents.structured_output import ProviderStrategy, ToolStrategy
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
@@ -30,7 +31,7 @@ from pydantic import BaseModel
 from app.agents.middleware import CostMeterMiddleware, GroundingMiddleware
 from app.config import Settings
 from app.logging import get_logger
-from app.services.model_router import ModelRouter, Tier
+from app.services.model_router import ModelRouter, ModelSpec, Tier
 
 log = get_logger(__name__)
 
@@ -118,11 +119,29 @@ def build_agent(
         tools=spec.tools,
         system_prompt=spec.system_prompt,
         middleware=middleware,
-        response_format=spec.response_format,
+        response_format=_structured_output_strategy(spec, primary),
         state_schema=spec.state_schema,
         checkpointer=checkpointer,
         name=spec.name,
     )
+
+
+def _structured_output_strategy(spec: AgentSpec, model: ModelSpec) -> Any:
+    """Pick how this agent should be made to return a schema.
+
+    Groq rejects a request that combines native JSON mode with tool calling
+    ("json mode cannot be combined with tool/function calling"), so an agent
+    that needs both a schema and tools has to express the schema *as* a tool.
+
+    Native JSON mode is the default everywhere else, because it measured
+    better: on Groq's gpt-oss models it recovered both items from a two-item
+    transcript where tool-based output found one.
+    """
+    if spec.response_format is None:
+        return None
+    if spec.tools or model.structured_output == "function_calling":
+        return ToolStrategy(spec.response_format)
+    return ProviderStrategy(spec.response_format)
 
 
 UNTRUSTED_CONTENT_RULE = """
