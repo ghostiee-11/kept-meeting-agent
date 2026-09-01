@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: kept-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    # Free tier is 0.1 CPU / 512MB. A single worker is deliberate: extra workers
+    # would multiply memory and database connections for no throughput gain.
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: GIT_SHA
+        fromService:
+          type: web
+          name: kept-api
+          property: commitId
+      # Everything below is set in the Render dashboard, not in this file.
+      - key: DATABASE_URL
+        sync: false
+      - key: DEMO_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: INTERNAL_JOB_TOKEN
+        sync: false
