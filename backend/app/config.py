@@ -8,10 +8,10 @@ deployment never depends on a value hardcoded somewhere in a module. Secrets use
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Environment = Literal["local", "staging", "production"]
 
@@ -35,7 +35,11 @@ class Settings(BaseSettings):
     """Shared key required by write endpoints. Unset means auth is disabled,
     which is only acceptable locally; ``/health`` reports the difference."""
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
+    """NoDecode stops pydantic-settings JSON-parsing the raw env value, so the
+    validator below can accept a plain comma-separated string instead."""
     max_transcript_bytes: int = 200_000
     rate_limit_per_minute: int = 20
     daily_run_quota: int = 200
