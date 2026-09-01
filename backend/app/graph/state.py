@@ -95,8 +95,13 @@ class MeetingState(MessagesState):
     current_agent: str
     final_summary: str
     replans: int
-    """Bounded. The Chief may send extraction back once when the Verifier
-    rejects most of a batch, and then must proceed with what it has."""
+    """How many reruns have actually happened. Bounded by MAX_REPLANS."""
+
+    replan_wanted: bool
+    """Set by a team that reports its own output is untrustworthy, and cleared
+    by the rerun. Kept separate from the counter because gating a rerun on the
+    counter alone blocks the retry it is meant to permit: the run that asks for
+    the retry is the run that increments it."""
 
     # ---- Artifacts ------------------------------------------------------
     decisions: list[ExtractedDecision]

@@ -148,7 +148,12 @@ def build_meeting_graph(
         )
 
     async def intelligence(state: MeetingState) -> Command[Any]:
-        if state.get("replans", 0) >= MAX_REPLANS and (
+        # A rerun is allowed only when the previous attempt asked for one and
+        # the budget for reruns has not been spent. Gating on the counter alone
+        # blocked the very retry it was meant to permit, because the counter is
+        # incremented by the run that requests the retry.
+        may_rerun = state.get("replan_wanted", False) and state.get("replans", 0) < MAX_REPLANS
+        if not may_rerun and (
             skip := _already_done(state, "intelligence", "Delegate to resolution next.")
         ):
             return skip
@@ -169,9 +174,9 @@ def build_meeting_graph(
         considered = len(kept) + len(rejections)
         rejected_share = len(rejections) / considered if considered else 0.0
         unreliable = rejected_share > REJECTION_REPLAN_THRESHOLD and considered > 2
-        should_replan = (bool(found.failed_briefs) or unreliable) and state.get(
-            "replans", 0
-        ) < MAX_REPLANS
+        is_rerun = state.get("replan_wanted", False)
+        replans_after = state.get("replans", 0) + (1 if is_rerun else 0)
+        should_replan = (bool(found.failed_briefs) or unreliable) and replans_after < MAX_REPLANS
 
         summary = (
             f"intelligence: {len(found.decisions)} decisions, {len(obligations)} obligations, "
@@ -201,7 +206,8 @@ def build_meeting_graph(
                     for item in obligations
                 ],
                 "progress": [summary],
-                "replans": state.get("replans", 0) + (1 if should_replan else 0),
+                "replans": replans_after,
+                "replan_wanted": should_replan,
             },
         )
 

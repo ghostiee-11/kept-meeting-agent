@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     max_model_calls_per_run: int = 60
     max_supervisor_steps: int = 20
 
+    analyst_concurrency: int = 2
+    """How many extraction briefs run at once.
+
+    Groq's free tier allows 8000 tokens per minute per model, and each brief is
+    roughly 3500. Three at once exceeds that, and Groq reports the overrun as an
+    empty generation rather than a clean 429, which looks like a model failure
+    rather than a budget one. Two fits. Raise it on a paid tier, where the
+    concurrency is the point of splitting the briefs in the first place."""
+
     # ---- Mock task API -----------------------------------------------------
     mock_failure_rate: float = 0.0
     """Fraction of mock task API calls that fail, so retry and circuit-breaker

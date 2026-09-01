@@ -42,6 +42,9 @@ from app.services.verifier import verify_evidence
 
 log = get_logger(__name__)
 
+# Long enough for a per-minute token window to roll over.
+_RETRY_PAUSE_SECONDS = 20.0
+
 
 class Brief(StrEnum):
     """The three jobs the Analyst is fanned out across.
@@ -175,23 +178,30 @@ async def extract(
     """
     windows = turn_texts(turns)
     state = {"transcript": transcript, "turn_texts": windows}
+    limit = asyncio.Semaphore(settings.analyst_concurrency)
 
     async def run(brief: Brief) -> tuple[Brief, BaseModel | None]:
-        """Run one brief, retrying once on a transient provider failure.
+        """Run one brief, retrying once after a pause.
 
-        Free-tier models under load intermittently return an empty generation
-        that fails schema validation. One retry costs a few cents and recovers
-        most of them; a second would be throwing money at a model that has
-        already shown it cannot do this right now.
+        The pause matters more than the retry. The usual failure here is a
+        per-minute token budget being exhausted by the concurrent briefs, and
+        an immediate retry goes straight back into the same exhausted budget.
+        Waiting lets the window roll over.
+
+        One retry, not a loop: a second would be spending money on a model that
+        has already shown it cannot do this right now.
         """
         agent = build_agent(analyst_for(brief), router=router, settings=settings)
         message = wrap_untrusted(transcript) + f"\n\nExtract the {brief.value}."
 
         for attempt in (1, 2):
             try:
-                result = await agent.ainvoke(
-                    {"messages": [{"role": "user", "content": message}], **state}
-                )
+                async with limit:
+                    if attempt > 1:
+                        await asyncio.sleep(_RETRY_PAUSE_SECONDS)
+                    result = await agent.ainvoke(
+                        {"messages": [{"role": "user", "content": message}], **state}
+                    )
             except Exception as exc:
                 log.warning(
                     "analyst.brief_failed",
