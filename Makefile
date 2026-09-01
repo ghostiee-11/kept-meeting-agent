@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-backend dev-frontend test lint fmt typecheck check eval clean
+.PHONY: help install dev dev-backend dev-frontend test lint fmt typecheck check seed migrate eval clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -32,6 +32,12 @@ typecheck: ## Type-check backend and frontend
 	cd frontend && pnpm typecheck
 
 check: lint typecheck test ## Everything CI runs
+
+seed: ## Create the demo workspace and roster
+	cd backend && uv run python -m app.cli seed
+
+migrate: ## Apply database migrations
+	cd backend && uv run alembic upgrade head
 
 eval: ## Regenerate the evaluation report
 	cd backend && uv run python -m evals.runner --report ../docs/EVALUATION.md
