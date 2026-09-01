@@ -211,12 +211,13 @@ class ModelRouter:
     def build_spec(
         self, spec: ModelSpec, *, temperature: float = 0.0, **kwargs: Any
     ) -> BaseChatModel:
-        return init_chat_model(
+        model: BaseChatModel = init_chat_model(
             spec.model_id,
             model_provider=_LANGCHAIN_PROVIDER[spec.provider],
             temperature=temperature,
             **kwargs,
         )
+        return model
 
     def spec_for(self, identifier: str) -> ModelSpec:
         return REGISTRY.get(identifier) or _unknown_spec(identifier)
