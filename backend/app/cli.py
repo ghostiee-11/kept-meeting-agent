@@ -18,13 +18,17 @@ from sqlalchemy import delete, select
 
 from app.agents.contracts import COMMITTED_CLASSES, RejectionRecord
 from app.agents.intelligence import extract, review
+from app.agents.resolution import enrich_decisions, resolve_deadlines, resolve_owners
 from app.config import get_settings
 from app.db.session import create_engine, create_session_factory
 from app.logging import configure_logging, get_logger
 from app.models.domain import Person, Workspace
 from app.services import trace
 from app.services.model_router import ModelRouter, Tier
+from app.services.roster import RosterEntry
+from app.services.search import SearchService
 from app.services.segmentation import participants, segment
+from app.services.temporal import today_in
 
 log = get_logger(__name__)
 
@@ -124,16 +128,35 @@ async def seed(*, reset: bool) -> None:
     await engine.dispose()
 
 
-async def analyse(path: pathlib.Path, *, review_enabled: bool) -> None:
-    """Run the Intelligence team over a transcript and print what survived.
+async def load_roster() -> list[RosterEntry]:
+    """The demo workspace roster, for owner matching."""
+    settings = get_settings()
+    if settings.database_url is None:
+        return []
 
-    Prints rejections alongside the kept items, because the point of a separate
-    reviewer is that you can see what it removed and check whether it was right.
+    engine = create_engine(settings)
+    factory = create_session_factory(engine)
+    async with factory() as session:
+        people = (await session.scalars(select(Person))).all()
+    await engine.dispose()
+    return [
+        RosterEntry(person.id, person.name, tuple(person.aliases), person.role) for person in people
+    ]
+
+
+async def analyse(path: pathlib.Path, *, review_enabled: bool) -> None:
+    """Run the Intelligence and Resolution teams over a transcript.
+
+    Prints rejections and unresolved questions alongside the kept items,
+    because the point of a separate reviewer and an abstaining resolver is that
+    you can see what they set aside and check whether they were right.
     """
     transcript = path.read_text()
     settings = get_settings()
     router = ModelRouter(settings)
     turns = segment(transcript)
+    roster = await load_roster()
+    meeting_date = today_in("Asia/Kolkata")
 
     print(
         f"\n{path.name}: {len(turns)} turns, speakers: {', '.join(participants(turns)) or 'none'}"
@@ -153,29 +176,55 @@ async def analyse(path: pathlib.Path, *, review_enabled: bool) -> None:
                 found.commitments, transcript, turns, router=router, settings=settings
             )
 
-    print(f"DECISIONS ({len(found.decisions)})")
-    for decision in found.decisions:
-        external = " [needs lookup]" if decision.needs_external_context else ""
-        print(f"  {decision.statement}{external}")
-        print(f"    quote: {decision.evidence[0].quote[:78]!r}")
+        obligations = [i for i in kept if i.classification in COMMITTED_CLASSES]
+        search = SearchService(settings)
+        attributed, deadlines, enrichments = await asyncio.gather(
+            resolve_owners(obligations, roster, turns, router=router, settings=settings),
+            resolve_deadlines(
+                obligations,
+                meeting_date=meeting_date,
+                timezone="Asia/Kolkata",
+                router=router,
+                settings=settings,
+                search=search,
+            ),
+            enrich_decisions(found.decisions, router=router, settings=settings, search=search),
+        )
 
-    print(
-        f"\nOBLIGATIONS ({sum(1 for i in kept if i.classification in COMMITTED_CLASSES)} "
-        f"of {len(kept)} classified items)"
-    )
-    for obligation in kept:
-        marker = "*" if obligation.classification in COMMITTED_CLASSES else " "
+    print(f"DECISIONS ({len(found.decisions)})")
+    for index, decision in enumerate(found.decisions):
+        print(f"  {decision.statement}")
+        print(f"    quote: {decision.evidence[0].quote[:78]!r}")
+        if enriched := enrichments.get(index):
+            print(f"    context: {enriched.summary[:150]}")
+            for url in enriched.citations[:2]:
+                print(f"      {url}")
+
+    print(f"\nOBLIGATIONS ({len(obligations)} of {len(kept)} classified items)")
+    questions: list[str] = []
+    for (obligation, attribution), deadline in zip(attributed, deadlines, strict=True):
+        owner = attribution.display_name or "UNOWNED"
+        due = deadline.due.isoformat() if deadline.due else "NO DATE"
         flags = "".join(
             [
                 " RETRACTED" if obligation.is_retracted else "",
                 f" IF[{obligation.conditional_on}]" if obligation.conditional_on else "",
             ]
         )
+        print(f"  {obligation.text[:76]}{flags}")
         print(
-            f" {marker} {obligation.classification.value:11} "
-            f"owner={obligation.owner_hint or '-':8} due={obligation.due_hint or '-':16}{flags}"
+            f"      owner: {owner:16} ({attribution.confidence:.2f}) "
+            f"due: {due:12} ({deadline.confidence:.2f} via {deadline.method})"
         )
-        print(f"      {obligation.text[:88]}")
+        if attribution.person_id is None:
+            questions.append(f"{obligation.text[:56]}: {attribution.reason}")
+        if deadline.due is None and obligation.due_hint:
+            questions.append(f'{obligation.text[:56]}: could not resolve "{obligation.due_hint}"')
+
+    if questions:
+        print(f"\nNEEDS A HUMAN ({len(questions)})")
+        for question in questions:
+            print(f"  {question}")
 
     print(f"\nBLOCKERS ({len(found.blockers)})")
     for blocker in found.blockers:
