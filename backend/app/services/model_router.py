@@ -121,6 +121,12 @@ TIER_CHAINS: dict[Tier, list[str]] = {
         "groq:openai/gpt-oss-120b",
         "google_genai:gemini-3-flash",
         "openai:gpt-5.5-mini",
+        # Same provider, smaller model, as a last resort. Groq's token-per-minute
+        # limits are per model, so stepping down within Groq genuinely relieves
+        # pressure rather than hitting the same ceiling again. It only matters
+        # when no second provider is configured, which is exactly when a 429
+        # would otherwise be fatal.
+        "groq:openai/gpt-oss-20b",
     ],
     Tier.SKEPTIC: [
         "google_genai:gemini-3-flash",

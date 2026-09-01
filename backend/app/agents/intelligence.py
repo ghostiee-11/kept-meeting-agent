@@ -13,7 +13,7 @@ uninteresting rather than something a prompt has to talk an agent out of.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -84,6 +84,16 @@ class IntelligenceResult:
     commitments: list[ExtractedCommitment]
     blockers: list[ExtractedBlocker]
     rejections: list[RejectionRecord]
+
+    failed_briefs: list[str] = field(default_factory=list)
+    """Briefs that errored rather than returning nothing.
+
+    The distinction matters more than it looks. Without it, a failed
+    extraction and a meeting containing no commitments produce identical
+    output, and the supervisor confidently reports an empty meeting when the
+    truth is that the work was lost. This is the difference between a system
+    that degrades and one that lies.
+    """
 
     @property
     def obligations(self) -> list[ExtractedCommitment]:
@@ -166,22 +176,46 @@ async def extract(
     windows = turn_texts(turns)
     state = {"transcript": transcript, "turn_texts": windows}
 
-    async def run(brief: Brief) -> BaseModel | None:
+    async def run(brief: Brief) -> tuple[Brief, BaseModel | None]:
+        """Run one brief, retrying once on a transient provider failure.
+
+        Free-tier models under load intermittently return an empty generation
+        that fails schema validation. One retry costs a few cents and recovers
+        most of them; a second would be throwing money at a model that has
+        already shown it cannot do this right now.
+        """
         agent = build_agent(analyst_for(brief), router=router, settings=settings)
         message = wrap_untrusted(transcript) + f"\n\nExtract the {brief.value}."
-        try:
-            result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": message}], **state}
-            )
-        except Exception as exc:
-            log.warning("analyst.brief_failed", brief=brief.value, error=str(exc)[:300])
-            trace.record(f"analyst:{brief.value}", "error", payload={"error": str(exc)[:300]})
-            return None
-        return result.get("structured_response")
 
-    decisions, commitments, blockers = await asyncio.gather(
-        run(Brief.DECISIONS), run(Brief.COMMITMENTS), run(Brief.BLOCKERS)
+        for attempt in (1, 2):
+            try:
+                result = await agent.ainvoke(
+                    {"messages": [{"role": "user", "content": message}], **state}
+                )
+            except Exception as exc:
+                log.warning(
+                    "analyst.brief_failed",
+                    brief=brief.value,
+                    attempt=attempt,
+                    error=str(exc)[:300],
+                )
+                trace.record(
+                    f"analyst:{brief.value}",
+                    "error",
+                    payload={"attempt": attempt, "error": str(exc)[:300]},
+                )
+                continue
+            return brief, result.get("structured_response")
+
+        return brief, None
+
+    outcomes = dict(
+        await asyncio.gather(run(Brief.DECISIONS), run(Brief.COMMITMENTS), run(Brief.BLOCKERS))
     )
+    decisions = outcomes[Brief.DECISIONS]
+    commitments = outcomes[Brief.COMMITMENTS]
+    blockers = outcomes[Brief.BLOCKERS]
+    failed = [brief.value for brief, result in outcomes.items() if result is None]
 
     rejections: list[RejectionRecord] = []
     grounded_commitments = _ground(
@@ -201,6 +235,7 @@ async def extract(
         ],
         blockers=_ground(blockers, transcript, windows, rejections, "blockers", ExtractedBlocker),
         rejections=rejections,
+        failed_briefs=failed,
     )
 
 

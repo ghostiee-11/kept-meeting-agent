@@ -61,18 +61,48 @@ REJECTION_REPLAN_THRESHOLD = 0.6
 MAX_REPLANS = 1
 
 
+def _completed_teams(state: MeetingState) -> set[str]:
+    return {entry.split(":", 1)[0] for entry in state.get("progress", [])}
+
+
 def _summarise(state: MeetingState) -> str:
     """What the Chief sees before choosing. Outcomes only, no transcripts."""
+    done = _completed_teams(state)
+    remaining = [team for team in TEAMS if team not in done]
+
     lines = [
         f"Meeting: {len(state['turns'])} turns, "
         f"{len(state.get('roster', []))} people on the roster."
     ]
     if progress := state.get("progress"):
-        lines.append("Done so far:")
+        lines.append("Reported so far:")
         lines.extend(f"  {entry}" for entry in progress)
     else:
         lines.append("Nothing has run yet.")
+
+    # Stated explicitly. A supervisor left to infer what is outstanding from a
+    # growing list of reports will re-delegate work it has already delegated.
+    lines.append(f"Still to run: {', '.join(remaining)}." if remaining else "Every team has run.")
+    if not remaining:
+        lines.append("Call finish now.")
     return "\n".join(lines)
+
+
+def _already_done(state: MeetingState, team: str, next_step: str) -> Command[Any] | None:
+    """Refuse redundant work and point the supervisor at what is left.
+
+    The supervisor is a language model and will occasionally re-delegate a team
+    that has already reported. Left to a prompt, that costs a multiple of the
+    run's budget for identical output. The guard is structural so a stray
+    routing decision is cheap instead of expensive, and the refusal is worded
+    so the Chief learns what to do instead.
+    """
+    if team not in _completed_teams(state):
+        return None
+
+    message = f"{team}: already ran, nothing to redo. {next_step}"
+    trace.record(team, "artifact", payload={"skipped": True})
+    return Command(goto="chief_of_staff", update={"progress": [message]})
 
 
 def build_meeting_graph(
@@ -87,7 +117,10 @@ def build_meeting_graph(
     chief = build_agent(
         AgentSpec(
             name="chief_of_staff",
-            tier=Tier.REASON,
+            # Routing is a short, structured decision over a few lines of
+            # progress, not deep reasoning. The cheap tier does it as well and
+            # leaves the reasoning model's rate limit for the work that needs it.
+            tier=Tier.FAST,
             purpose="Plan the run, route between teams, and decide when it is done.",
             system_prompt=prompts.CHIEF_OF_STAFF,
             # Handoffs and a terminator. Nothing else: the supervisor cannot
@@ -101,19 +134,25 @@ def build_meeting_graph(
     )
 
     async def chief_of_staff(state: MeetingState) -> Command[Any]:
-        result = await chief.ainvoke(
-            {
-                "messages": [
-                    *state.get("messages", []),
-                    {"role": "user", "content": _summarise(state)},
-                ]
-            }
+        # Primed fresh from progress rather than from an accumulated history.
+        # See app/agents/handoff.py for why: it keeps the prompt the same size
+        # on the tenth hop as on the first, and avoids the orphaned tool
+        # message that a shared history produces across a subgraph boundary.
+        await chief.ainvoke({"messages": [{"role": "user", "content": _summarise(state)}]})
+
+        # Reaching here means the supervisor did not call a handoff tool, so
+        # there is nothing left for it to route to.
+        return Command(
+            goto=END,
+            update={"final_summary": state.get("final_summary") or "Run ended without a summary."},
         )
-        # The agent's handoff tool already returned a parent-level Command, so
-        # whatever comes back here is the supervisor declining to route.
-        return Command(goto=END, update={"messages": result.get("messages", [])})
 
     async def intelligence(state: MeetingState) -> Command[Any]:
+        if state.get("replans", 0) >= MAX_REPLANS and (
+            skip := _already_done(state, "intelligence", "Delegate to resolution next.")
+        ):
+            return skip
+
         found = await extract(state["transcript"], state["turns"], router=router, settings=settings)
         kept, review_rejections = await review(
             found.commitments,
@@ -129,17 +168,25 @@ def build_meeting_graph(
 
         considered = len(kept) + len(rejections)
         rejected_share = len(rejections) / considered if considered else 0.0
-        should_replan = (
-            rejected_share > REJECTION_REPLAN_THRESHOLD
-            and state.get("replans", 0) < MAX_REPLANS
-            and considered > 2
-        )
+        unreliable = rejected_share > REJECTION_REPLAN_THRESHOLD and considered > 2
+        should_replan = (bool(found.failed_briefs) or unreliable) and state.get(
+            "replans", 0
+        ) < MAX_REPLANS
 
         summary = (
             f"intelligence: {len(found.decisions)} decisions, {len(obligations)} obligations, "
             f"{len(found.blockers)} blockers, {len(rejections)} rejected"
-            + (", extraction looks unreliable" if should_replan else "")
         )
+        if found.failed_briefs:
+            # Said plainly, because the alternative is the supervisor reporting
+            # an empty meeting when the work was simply lost.
+            summary += (
+                f". WARNING: the {', '.join(found.failed_briefs)} "
+                f"{'brief' if len(found.failed_briefs) == 1 else 'briefs'} failed to run, so "
+                "those counts are not trustworthy and this needs running again"
+            )
+        elif unreliable:
+            summary += ". Most candidates were thrown out, so extraction looks unreliable"
         trace.record("intelligence", "artifact", payload={"summary": summary})
 
         return Command(
@@ -155,19 +202,18 @@ def build_meeting_graph(
                 ],
                 "progress": [summary],
                 "replans": state.get("replans", 0) + (1 if should_replan else 0),
-                "messages": [{"role": "user", "content": summary}],
             },
         )
 
     async def resolution(state: MeetingState) -> Command[Any]:
+        if skip := _already_done(state, "resolution", "Delegate to execution next."):
+            return skip
+
         obligations = [item.commitment for item in state.get("items", [])]
         if not obligations:
             return Command(
                 goto="chief_of_staff",
-                update={
-                    "progress": ["resolution: nothing to resolve"],
-                    "messages": [{"role": "user", "content": "resolution: nothing to resolve"}],
-                },
+                update={"progress": ["resolution: nothing to resolve"]},
             )
 
         attributed = await resolve_owners(
@@ -213,11 +259,13 @@ def build_meeting_graph(
                 "questions": questions,
                 "enrichments": enrichments,
                 "progress": [summary],
-                "messages": [{"role": "user", "content": summary}],
             },
         )
 
     async def execution(state: MeetingState) -> Command[Any]:
+        if skip := _already_done(state, "execution", "Call finish now."):
+            return skip
+
         today: date = state["meeting_date"]
         open_by_index = _questions_by_commitment(state.get("questions", []))
 
@@ -249,7 +297,6 @@ def build_meeting_graph(
             update={
                 "items": scored,
                 "progress": [summary],
-                "messages": [{"role": "user", "content": summary}],
             },
         )
 

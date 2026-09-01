@@ -1,27 +1,34 @@
 """Agent-to-agent handoff.
 
-Two details are the usual reason multi-agent systems misbehave, and both are
-handled here rather than left to chance.
+**The supervisor and the parent graph do not share a message history**, and
+that is the important design decision here.
 
-**The AIMessage carrying a tool call and its ToolMessage must travel together.**
-Emitting the jump without the acknowledging ToolMessage leaves a dangling tool
-call in history, which most providers reject outright and the rest quietly get
-confused by.
+The obvious implementation has the handoff tool push its ToolMessage into
+parent state. It does not work, and the way it fails is instructive: the
+AIMessage carrying the tool call lives inside the supervisor's own subgraph, so
+only the ToolMessage reaches the parent. The next turn then opens with an
+orphaned tool result, which Groq rejects outright ("Tools should have a name")
+and other providers quietly misread.
 
-**Context isolation.** A handoff carries a written brief, not the sender's
-transcript of reasoning. Passing every message to every agent is the standard
-multi-agent failure: cost grows with the square of the team, and agents start
-second-guessing each other's half-finished thoughts instead of doing their own
-job. The brief is the contract.
+Rather than reassembling that pair, the supervisor keeps no history at all. It
+is re-primed each turn from `progress`, a short list of what each team
+reported. That fixes the malformed-history problem by removing the history, and
+it has two better properties: the supervisor routes on outcomes instead of on a
+transcript of its own past reasoning, and its prompt stays the same size on the
+tenth hop as on the first instead of growing with every delegation.
+
+Context isolation applies to the teams too. A handoff carries a written brief,
+not the sender's reasoning. Passing every message to every agent is the
+standard multi-agent failure: cost grows with the square of the team, and
+agents start second-guessing each other's half-finished thoughts.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Any
 
-from langchain.messages import ToolMessage
-from langchain.tools import InjectedToolCallId, tool
+from langchain.tools import tool
 from langchain_core.tools import BaseTool
 from langgraph.types import Command
 
@@ -37,10 +44,7 @@ def create_handoff_tool(
     """Build a tool that transfers control to `agent_name` in the parent graph."""
 
     @tool(f"delegate_to_{agent_name}", description=description)
-    def handoff(
-        brief: str,
-        tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    def handoff(brief: str) -> Command[Any]:
         """Hand this piece of work to another agent.
 
         Args:
@@ -57,17 +61,9 @@ def create_handoff_tool(
             # The jump happens in the supervisor's graph, not inside whichever
             # subgraph the tool was invoked from.
             graph=Command.PARENT,
-            update={
-                "messages": [
-                    ToolMessage(
-                        content=f"Handed off to {agent_name}.",
-                        name=f"delegate_to_{agent_name}",
-                        tool_call_id=tool_call_id,
-                    )
-                ],
-                "current_agent": agent_name,
-                "current_brief": brief,
-            },
+            # No messages. See the module docstring: pushing the ToolMessage
+            # here without its AIMessage is what produces a malformed history.
+            update={"current_agent": agent_name, "current_brief": brief},
         )
 
     return handoff
@@ -82,10 +78,7 @@ def create_finish_tool(*, from_agent: str = "chief_of_staff") -> BaseTool:
     """
 
     @tool("finish", description="End the run. Call this once the meeting is fully processed.")
-    def finish(
-        summary: str,
-        tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    def finish(summary: str) -> Command[Any]:
         """Close out the run.
 
         Args:
@@ -96,12 +89,7 @@ def create_finish_tool(*, from_agent: str = "chief_of_staff") -> BaseTool:
         return Command(
             goto="__end__",
             graph=Command.PARENT,
-            update={
-                "messages": [
-                    ToolMessage(content="Run complete.", name="finish", tool_call_id=tool_call_id)
-                ],
-                "final_summary": summary,
-            },
+            update={"final_summary": summary, "current_agent": "done"},
         )
 
     return finish
