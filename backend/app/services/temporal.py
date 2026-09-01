@@ -181,5 +181,5 @@ def today_in(timezone: str) -> date:
 
     try:
         return datetime.now(ZoneInfo(timezone)).date()
-    except Exception:  # noqa: BLE001 - an unknown zone must not break a run
+    except Exception:
         return datetime.now(ZoneInfo("UTC")).date()
