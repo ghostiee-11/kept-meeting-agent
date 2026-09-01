@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     google_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
 
+    # Per-tier model overrides, as `provider:model-id`. Groq retires models on
+    # a rolling schedule, so every identifier has to be swappable without a
+    # deploy. Unset means the built-in preference chain applies.
+    model_fast: str | None = None
+    model_reason: str | None = None
+    model_skeptic: str | None = None
+    model_judge: str | None = None
+
     # ---- Web search --------------------------------------------------------
     tavily_api_key: SecretStr | None = None
     max_searches_per_run: int = 4
