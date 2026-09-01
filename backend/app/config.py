@@ -1,0 +1,108 @@
+"""Application settings.
+
+Every knob the system has is declared here and sourced from the environment, so a
+deployment never depends on a value hardcoded somewhere in a module. Secrets use
+``SecretStr`` so an accidental log or error response cannot leak them.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+Environment = Literal["local", "staging", "production"]
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # ---- Application -------------------------------------------------------
+    app_env: Environment = "local"
+    log_level: str = "INFO"
+    git_sha: str = "dev"
+    """Set by the deploy platform. Render exposes RENDER_GIT_COMMIT."""
+
+    # ---- API surface -------------------------------------------------------
+    demo_key: SecretStr | None = None
+    """Shared key required by write endpoints. Unset means auth is disabled,
+    which is only acceptable locally; ``/health`` reports the difference."""
+
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    max_transcript_bytes: int = 200_000
+    rate_limit_per_minute: int = 20
+    daily_run_quota: int = 200
+
+    # ---- Persistence -------------------------------------------------------
+    database_url: SecretStr | None = None
+    db_pool_size: int = 3
+    """Render free tier is 0.1 CPU / 512MB and Neon free caps connections.
+    A small pool is deliberate, not an oversight."""
+    db_max_overflow: int = 2
+
+    # ---- Model providers ---------------------------------------------------
+    groq_api_key: SecretStr | None = None
+    google_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+
+    # ---- Web search --------------------------------------------------------
+    tavily_api_key: SecretStr | None = None
+    max_searches_per_run: int = 4
+    search_cache_ttl_seconds: int = 86_400
+
+    # ---- Agent budgets -----------------------------------------------------
+    max_model_calls_per_run: int = 60
+    max_supervisor_steps: int = 20
+
+    # ---- Mock task API -----------------------------------------------------
+    mock_failure_rate: float = 0.0
+    """Fraction of mock task API calls that fail, so retry and circuit-breaker
+    behaviour is demonstrable rather than merely claimed."""
+    mock_latency_ms: int = 0
+
+    # ---- Internal jobs -----------------------------------------------------
+    internal_job_token: SecretStr | None = None
+
+    # ---- Optional tracing --------------------------------------------------
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str = "kept"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        """Accept a comma-separated string so platform env vars stay readable."""
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("mock_failure_rate")
+    @classmethod
+    def _check_failure_rate(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("mock_failure_rate must be between 0.0 and 1.0")
+        return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def configured_providers(self) -> dict[str, bool]:
+        """Which model providers have credentials. Booleans only, never values."""
+        return {
+            "groq": self.groq_api_key is not None,
+            "google": self.google_api_key is not None,
+            "openai": self.openai_api_key is not None,
+        }
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
