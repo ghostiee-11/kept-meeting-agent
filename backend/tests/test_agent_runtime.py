@@ -110,7 +110,10 @@ async def test_cost_meter_records_the_model_that_actually_answered() -> None:
     with trace.run_trace("run-3") as recorder:
         await meter.awrap_model_call(request_with({}), handler)
 
-    entry = recorder.entries[0]
+    # The meter opens with a `model_call_started` marker, which is what drives
+    # the live "working" indicator in the console before a call returns.
+    assert recorder.entries[0].event == "model_call_started"
+    entry = next(item for item in recorder.entries if item.event == "model_call")
     assert entry.agent == "analyst"
     assert entry.model == "openai/gpt-oss-120b"
     assert entry.provider == "groq"
@@ -129,7 +132,7 @@ async def test_cost_meter_records_a_failed_call_before_re_raising() -> None:
     with trace.run_trace("run-4") as recorder, pytest.raises(RuntimeError):
         await meter.awrap_model_call(request_with({}), handler)
 
-    assert recorder.entries[0].event == "error"
+    assert [entry.event for entry in recorder.entries] == ["model_call_started", "error"]
 
 
 # ---- Grounding -------------------------------------------------------------

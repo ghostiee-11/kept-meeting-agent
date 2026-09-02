@@ -19,10 +19,25 @@ from sqlalchemy.ext.asyncio import (
 from app.config import Settings, get_settings
 from app.db.session import build_engine_url
 
-# Tests must not inherit the developer's backend/.env. Without this, a local
-# key file silently changes what the suite asserts, and CI and a laptop
-# disagree about whether a test passes.
+# Tests must not inherit the developer's credentials, from either source.
+#
+# The env_file line was the obvious half. The process environment is the half
+# that actually bit: a shell with GROQ_API_KEY exported made
+# `Settings(google_api_key="k")` see a Groq key too, so a test asserting "no
+# credentials for this tier" quietly stopped testing anything. CI passed, a
+# laptop failed, and the disagreement was invisible until someone looked.
 Settings.model_config["env_file"] = None
+
+_PROVIDER_KEYS = (
+    "GROQ_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+    "TAVILY_API_KEY",
+    "DEMO_KEY",
+    "DATABASE_URL",
+)
+for _key in _PROVIDER_KEYS:
+    os.environ.pop(_key, None)
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 

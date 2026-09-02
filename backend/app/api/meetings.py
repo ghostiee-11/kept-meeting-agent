@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -28,6 +28,7 @@ from app.graph.state import MeetingState
 from app.logging import get_logger
 from app.models.base import RunStatus
 from app.models.domain import Meeting, Person, Run, Workspace
+from app.security.auth import require_demo_key
 from app.services import persistence, trace
 from app.services.model_router import ModelRouter
 from app.services.roster import RosterEntry
@@ -63,7 +64,7 @@ async def _load_workspace(session: SessionDep) -> Workspace:
     return workspace
 
 
-@router.post("/run")
+@router.post("/run", dependencies=[Depends(require_demo_key)])
 async def run_meeting(
     payload: RunRequest,
     request: Request,
