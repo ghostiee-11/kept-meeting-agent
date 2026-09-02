@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     and then fails, which is what a real API does when it times out on the way
     back: only an idempotency key prevents a duplicate task."""
 
+    mock_fail_first_n: int = 0
+    """Fail exactly the first N write attempts, then succeed. A probability is
+    right for a demo and wrong for a test: a 50% failure rate with three
+    attempts passes seven times in eight, which is a flaky test rather than a
+    coverage of retries."""
+
     mock_latency_ms: int = 0
 
     # ---- Internal jobs -----------------------------------------------------

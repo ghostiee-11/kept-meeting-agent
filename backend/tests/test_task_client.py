@@ -75,8 +75,13 @@ async def test_same_commitment_never_creates_two_tasks(client) -> None:
 
 
 async def test_retry_recovers_from_a_transient_failure(client) -> None:
-    """Every call fails once before succeeding, which three attempts absorb."""
-    async with client(MOCK_FAILURE_RATE="0.5", MOCK_FAILURE_MODE="pre") as api:
+    """The first two attempts fail, the third succeeds.
+
+    Deterministic rather than probabilistic: a 50% failure rate with three
+    attempts passes seven times in eight, which is a flaky test dressed up as
+    coverage of retries.
+    """
+    async with client(MOCK_FAIL_FIRST_N="2") as api:
         task = await api.create_task(title="Book the vendor call", commitment_id=uuid.uuid4())
 
     assert task.id.startswith("KPT-")

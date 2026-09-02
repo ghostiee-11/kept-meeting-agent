@@ -21,6 +21,7 @@ import asyncio
 import random
 import uuid
 from datetime import date, datetime
+from itertools import count
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response, status
@@ -36,6 +37,10 @@ router = APIRouter(prefix="/mock/v1", tags=["mock task api"])
 log = get_logger(__name__)
 
 TASK_NUMBER_SEQUENCE = Sequence("mock_task_number_seq")
+
+# Counts attempts for MOCK_FAIL_FIRST_N, which is the deterministic
+# counterpart to the probabilistic failure rate.
+_attempts = count(1)
 
 
 class TaskCreate(BaseModel):
@@ -82,6 +87,14 @@ async def _simulate_transport(settings: SettingsDep, *, phase: Literal["pre", "p
     """Inject the latency and failures a real integration would face."""
     if phase == "pre" and settings.mock_latency_ms:
         await asyncio.sleep(settings.mock_latency_ms / 1000)
+
+    if phase == "pre" and settings.mock_fail_first_n > 0:
+        if next(_attempts) <= settings.mock_fail_first_n:
+            log.info("mock_task_api.injected_failure", phase=phase, mode="first_n")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Injected failure (first-n).",
+            )
 
     if settings.mock_failure_rate <= 0:
         return
