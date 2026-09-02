@@ -1,0 +1,10 @@
+{
+  "name": "kept",
+  "private": true,
+  "description": "Kept: a multi-agent meeting-to-execution system. Frontend in frontend/, backend in backend/.",
+  "packageManager": "pnpm@11.14.0",
+  "scripts": {
+    "build": "pnpm --dir frontend build",
+    "dev": "pnpm --dir frontend dev"
+  }
+}
