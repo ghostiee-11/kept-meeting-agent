@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,9 +18,52 @@ interface Finished {
   tokens: { in: number; out: number };
 }
 
+/**
+ * What survives leaving the page.
+ *
+ * The console is a client component, so navigating to Execution and back
+ * unmounts it and takes the pasted transcript with it. Losing a transcript
+ * somebody pasted, and the result of a run that cost two minutes, because
+ * they clicked a tab is not acceptable. The last run's outcome is kept too,
+ * so the link to what the team found still works on return.
+ *
+ * Session storage rather than local: this is the current sitting, not a
+ * preference. Wrapped because a private window can refuse it outright, and a
+ * console that will not render is worse than one that forgot a draft.
+ */
+const DRAFT_KEY = "kept.console.draft";
+
+interface Draft {
+  transcript: string;
+  title: string;
+  finished: Finished | null;
+}
+
+function loadDraft(): Draft | null {
+  try {
+    const stored = sessionStorage.getItem(DRAFT_KEY);
+    return stored ? (JSON.parse(stored) as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(draft: Draft): void {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Storage disabled or full. The console still works, it just forgets.
+  }
+}
+
 export function RunConsole() {
-  const [transcript, setTranscript] = useState("");
-  const [title, setTitle] = useState("");
+  // Read on the first render only. The console is mounted client-side only
+  // (see the dynamic import in app/page.tsx), so there is no server markup
+  // for a restored draft to disagree with.
+  const [transcript, setTranscript] = useState(
+    () => loadDraft()?.transcript ?? "",
+  );
+  const [title, setTitle] = useState(() => loadDraft()?.title ?? "");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +72,13 @@ export function RunConsole() {
   const [reports, setReports] = useState<string[]>([]);
   const [seen, setSeen] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState(0);
-  const [finished, setFinished] = useState<Finished | null>(null);
+  const [finished, setFinished] = useState<Finished | null>(
+    () => loadDraft()?.finished ?? null,
+  );
+
+  useEffect(() => {
+    saveDraft({ transcript, title, finished });
+  }, [transcript, title, finished]);
 
   const abort = useRef<AbortController | null>(null);
   const startedAt = useRef(0);
