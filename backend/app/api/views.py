@@ -24,6 +24,7 @@ from app.models.domain import (
     Clarification,
     Commitment,
     CommitmentEvent,
+    Communication,
     Decision,
     Meeting,
     Person,
@@ -99,12 +100,22 @@ class RejectionOut(BaseModel):
     reason: str
 
 
+class CommunicationOut(BaseModel):
+    id: uuid.UUID
+    kind: str
+    subject: str | None
+    body: str
+    status: str
+    created_at: datetime
+
+
 class MeetingDetail(BaseModel):
     meeting: MeetingSummary
     transcript: str
     decisions: list[DecisionOut]
     commitments: list[CommitmentOut]
     rejections: list[RejectionOut]
+    communications: list[CommunicationOut]
 
 
 class ClarificationOut(BaseModel):
@@ -188,7 +199,7 @@ def _to_out(commitment: Commitment, owner: str | None, today: date) -> Commitmen
 
 async def _count_by(session: SessionDep, query: Any) -> dict[uuid.UUID, int]:
     """Run a grouped count and index it by the grouping key."""
-    return {key: count for key, count in (await session.execute(query)).all()}
+    return dict((await session.execute(query)).all())  # type: ignore[arg-type]
 
 
 async def _owner_names(session: SessionDep) -> dict[uuid.UUID, str]:
@@ -263,6 +274,9 @@ async def get_meeting(meeting_id: uuid.UUID, session: SessionDep) -> MeetingDeta
     rejections = (
         await session.scalars(select(Rejection).where(Rejection.meeting_id == meeting_id))
     ).all()
+    communications = (
+        await session.scalars(select(Communication).where(Communication.meeting_id == meeting_id))
+    ).all()
 
     return MeetingDetail(
         meeting=MeetingSummary(
@@ -303,6 +317,17 @@ async def get_meeting(meeting_id: uuid.UUID, session: SessionDep) -> MeetingDeta
                 reason=item.reason,
             )
             for item in rejections
+        ],
+        communications=[
+            CommunicationOut(
+                id=item.id,
+                kind=item.kind.value,
+                subject=item.subject,
+                body=item.body,
+                status="sent" if item.sent_at else "draft",
+                created_at=item.created_at,
+            )
+            for item in communications
         ],
     )
 
@@ -444,16 +469,15 @@ async def list_runs(
             )
         ).all()
     }
-    agent_counts = {
-        run_id: count
-        for run_id, count in (
+    agent_counts: dict[uuid.UUID, int] = dict(
+        (
             await session.execute(
                 select(AgentTraceEntry.run_id, func.count(func.distinct(AgentTraceEntry.agent)))
                 .where(AgentTraceEntry.run_id.in_([run.id for run in runs]))
                 .group_by(AgentTraceEntry.run_id)
             )
-        ).all()
-    }
+        ).all()  # type: ignore[arg-type]
+    )
 
     return [
         RunSummary(

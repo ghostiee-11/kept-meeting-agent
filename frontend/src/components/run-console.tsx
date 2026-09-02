@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 interface Finished {
   runId: string;
+  meetingId: string;
   summary: string;
   counts: Record<string, number>;
   costUsd: number;
@@ -33,6 +34,7 @@ export function RunConsole() {
   const abort = useRef<AbortController | null>(null);
   const startedAt = useRef(0);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
+  const meetingId = useRef("");
 
   function reset() {
     setBars([]);
@@ -100,6 +102,10 @@ export function RunConsole() {
     }
 
     switch (event.type) {
+      case "run_started":
+        meetingId.current = event.meeting_id;
+        break;
+
       case "model_call_started":
         openedAt.set(event.agent, now);
         setActive((current) => new Set(current).add(event.agent));
@@ -158,6 +164,7 @@ export function RunConsole() {
       case "run_finished":
         setFinished({
           runId: event.run_id,
+          meetingId: meetingId.current,
           summary: event.summary,
           counts: event.counts,
           costUsd: event.cost_usd,
@@ -307,7 +314,9 @@ function Outcome({ finished }: { finished: Finished }) {
         </p>
         <div className="mt-3 flex items-center gap-4">
           <Button asChild size="sm" variant="outline">
-            <Link href="/execution">See who owes what</Link>
+            <Link href={`/meetings/${finished.meetingId}`}>
+              See what the team found
+            </Link>
           </Button>
           <span className="t-data text-paper-muted">
             {finished.tokens.in}/{finished.tokens.out} tokens

@@ -71,6 +71,15 @@ export interface Rejection {
   reason: string;
 }
 
+export interface CommunicationOut {
+  id: string;
+  kind: string;
+  subject: string | null;
+  body: string;
+  status: string;
+  created_at: string;
+}
+
 export interface MeetingSummary {
   id: string;
   title: string;
@@ -88,6 +97,7 @@ export interface MeetingDetail {
   decisions: Decision[];
   commitments: Commitment[];
   rejections: Rejection[];
+  communications: CommunicationOut[];
 }
 
 export interface TraceEntry {

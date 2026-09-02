@@ -7,8 +7,15 @@ where a silent bug would quietly delete somebody's commitment.
 
 from __future__ import annotations
 
-from app.agents.contracts import Classification, Evidence, ExtractedCommitment, ReviewVerdict
-from app.agents.intelligence import IntelligenceResult, _apply_verdicts
+from app.agents.contracts import (
+    Classification,
+    Evidence,
+    ExtractedCommitment,
+    ExtractedDecision,
+    RejectionRecord,
+    ReviewVerdict,
+)
+from app.agents.intelligence import IntelligenceResult, _apply_verdicts, _ground
 
 
 def candidate(
@@ -122,3 +129,78 @@ def test_obligations_and_set_aside_partition_the_classified_items() -> None:
         "Look at caching",
         "Latency has been rough",
     ]
+
+
+class _Batch:
+    """What a structured Analyst response looks like to `_ground`."""
+
+    def __init__(self, items: list[ExtractedDecision] | list[ExtractedCommitment]) -> None:
+        self.items = items
+
+
+TRANSCRIPT = (
+    "Meera: We're keeping the Friday release date rather than slipping to Monday.\n"
+    "Adit: I'll write the runbook and send Priya the staging credentials.\n"
+)
+
+
+def decision(statement: str, quote: str) -> ExtractedDecision:
+    return ExtractedDecision(statement=statement, confidence=0.9, evidence=[Evidence(quote=quote)])
+
+
+def quoted(text: str, quote: str) -> ExtractedCommitment:
+    return ExtractedCommitment(
+        text=text,
+        classification=Classification.COMMITMENT,
+        reasoning="because",
+        confidence=0.8,
+        evidence=[Evidence(quote=quote)],
+    )
+
+
+def test_one_sentence_restated_twice_is_kept_once() -> None:
+    """Two rows meaning the same thing read as a system that cannot count, and
+    the Analyst does occasionally restate a decision inside a single brief."""
+    rejections: list[RejectionRecord] = []
+    quote = "We're keeping the Friday release date rather than slipping to Monday."
+
+    kept = _ground(
+        _Batch(
+            [
+                decision("The team will keep the Friday release date instead of moving it.", quote),
+                decision("The team will keep the Friday release rather than slip.", quote),
+            ]
+        ),
+        TRANSCRIPT,
+        [],
+        rejections,
+        "decisions",
+        ExtractedDecision,
+    )
+
+    assert len(kept) == 1
+    assert [record.stage for record in rejections] == ["dedupe"]
+
+
+def test_two_promises_in_one_sentence_both_survive() -> None:
+    """The dedupe is on meaning, not on the span. One sentence carrying two
+    different promises has to stay two commitments."""
+    rejections: list[RejectionRecord] = []
+    quote = "I'll write the runbook and send Priya the staging credentials."
+
+    kept = _ground(
+        _Batch(
+            [
+                quoted("Write the runbook", quote),
+                quoted("Send Priya the staging credentials", quote),
+            ]
+        ),
+        TRANSCRIPT,
+        [],
+        rejections,
+        "commitments",
+        ExtractedCommitment,
+    )
+
+    assert len(kept) == 2
+    assert rejections == []

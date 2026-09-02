@@ -36,6 +36,7 @@ from app.agents.contracts import (
 from app.config import Settings
 from app.logging import get_logger
 from app.services import trace
+from app.services.ledger import similarity
 from app.services.model_router import ModelRouter, Tier
 from app.services.segmentation import Turn, turn_texts
 from app.services.verifier import verify_evidence
@@ -280,7 +281,20 @@ def _ground[GroundedT: Grounded](
                 )
             )
             continue
-        kept.append(item.model_copy(update={"evidence": grounded}))
+
+        item = item.model_copy(update={"evidence": grounded})
+        twin = _duplicate_of(item, kept)
+        if twin is not None:
+            rejections.append(
+                RejectionRecord(
+                    candidate=item.model_dump(mode="json"),
+                    rejected_by="verifier",
+                    stage="dedupe",
+                    reason=f'Same sentence, already recorded as "{_body(twin)}".',
+                )
+            )
+            continue
+        kept.append(item)
 
     trace.record(
         f"analyst:{label}",
@@ -288,6 +302,40 @@ def _ground[GroundedT: Grounded](
         payload={"kept": len(kept), "rejected": len(rejections)},
     )
     return kept
+
+
+def _body(item: Grounded) -> str:
+    """The item's own sentence, whichever field carries it."""
+    for name in ("statement", "text", "description"):
+        value = getattr(item, name, None)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+# Two items are the same thing when they cite the same sentence and say roughly
+# the same thing about it. The span alone is not enough: "I'll write the runbook
+# and send Priya the credentials" is one sentence and two commitments.
+#
+# The threshold sits in a wide gap. Restatements of one decision measured 0.50
+# to 0.59; genuinely different promises sharing a sentence measured 0.11 to
+# 0.31. Anything in between is rare enough to be worth keeping both rows.
+_SAME_THING = 0.45
+
+
+def _duplicate_of[GroundedT: Grounded](item: GroundedT, kept: list[GroundedT]) -> GroundedT | None:
+    """A near-twin already kept, or None.
+
+    The Analyst occasionally restates one sentence twice inside a single brief,
+    which reaches the reviewer as two rows that mean the same thing. Cheaper to
+    catch here, once, than to ask the model to be more careful.
+    """
+    spans = {(evidence.start, evidence.end) for evidence in item.evidence}
+    for other in kept:
+        shares_span = spans & {(evidence.start, evidence.end) for evidence in other.evidence}
+        if shares_span and similarity(_body(item), _body(other)) >= _SAME_THING:
+            return other
+    return None
 
 
 async def review(

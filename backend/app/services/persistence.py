@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.contracts import Classification
@@ -28,6 +28,7 @@ from app.models.base import (
     ClarificationStatus,
     CommitmentKind,
     CommitmentStatus,
+    CommunicationKind,
     EventType,
     RunStatus,
 )
@@ -36,6 +37,7 @@ from app.models.domain import (
     Clarification,
     Commitment,
     CommitmentEvent,
+    Communication,
     Decision,
     Meeting,
     Rejection,
@@ -116,11 +118,15 @@ async def save_run_results(
     recorder: RunTrace,
 ) -> dict[str, int]:
     """Persist everything one run produced, and its flight recorder."""
+    if await _already_extracted(session, meeting=meeting):
+        return await _record_repeat_run(session, run=run, meeting=meeting, recorder=recorder)
+
     counts = {
         "decisions": 0,
         "commitments": 0,
         "rejections": 0,
         "clarifications": 0,
+        "communications": 0,
         "trace": 0,
     }
 
@@ -162,6 +168,9 @@ async def save_run_results(
     counts["clarifications"] = await _save_questions(
         session, run=run, questions=state.get("questions", []), commitments=commitments
     )
+    counts["communications"] = _save_communications(
+        session, meeting=meeting, drafts=state.get("communications", {})
+    )
     counts["trace"] = _save_trace(session, run=run, recorder=recorder)
 
     tokens_in, tokens_out = recorder.tokens
@@ -174,6 +183,61 @@ async def save_run_results(
     await session.flush()
     log.info("persistence.saved", run_id=str(run.id), **counts)
     return counts
+
+
+async def _already_extracted(session: AsyncSession, *, meeting: Meeting) -> bool:
+    """Whether an earlier run already wrote this meeting's ledger rows.
+
+    Keyed on rows rather than on whether the meeting record was new, so a run
+    that died before it could persist still gets to write on the next attempt.
+    """
+    return bool(
+        await session.scalar(select(Decision.id).where(Decision.meeting_id == meeting.id).limit(1))
+        or await session.scalar(
+            select(Commitment.id).where(Commitment.first_seen_meeting_id == meeting.id).limit(1)
+        )
+    )
+
+
+async def _record_repeat_run(
+    session: AsyncSession, *, run: Run, meeting: Meeting, recorder: RunTrace
+) -> dict[str, int]:
+    """Keep the trace and the cost, keep the ledger as it was.
+
+    Submitting the same transcript twice is a re-run, not a second meeting. The
+    agents genuinely ran and that work is recorded, but writing their output
+    again would double every commitment and hand the Historian a phantom
+    slippage report built out of the workspace's own duplicates. The counts
+    returned describe the meeting, not this particular run, because that is
+    what the reviewer is actually asking about when they run it again.
+    """
+    counts = {
+        "decisions": await _count(session, Decision.meeting_id == meeting.id, Decision.id),
+        "commitments": await _count(
+            session, Commitment.first_seen_meeting_id == meeting.id, Commitment.id
+        ),
+        "rejections": await _count(session, Rejection.meeting_id == meeting.id, Rejection.id),
+        "clarifications": 0,
+        "communications": await _count(
+            session, Communication.meeting_id == meeting.id, Communication.id
+        ),
+        "trace": _save_trace(session, run=run, recorder=recorder),
+    }
+
+    tokens_in, tokens_out = recorder.tokens
+    run.cost_usd = round(recorder.cost_usd, 6)
+    run.tokens_in = tokens_in
+    run.tokens_out = tokens_out
+    run.status = RunStatus.SUCCEEDED
+    run.finished_at = datetime.now(UTC)
+
+    await session.flush()
+    log.info("persistence.repeat_run", run_id=str(run.id), meeting_id=str(meeting.id), **counts)
+    return counts
+
+
+async def _count(session: AsyncSession, where: Any, column: Any) -> int:
+    return await session.scalar(select(func.count(column)).where(where)) or 0
 
 
 async def _save_commitments(
@@ -289,6 +353,28 @@ async def _save_questions(
             )
         saved += 1
     return saved
+
+
+def _save_communications(session: AsyncSession, *, meeting: Meeting, drafts: dict[str, str]) -> int:
+    """The Herald's drafts, stored so they can be shown rather than discarded
+    at the end of the run they were written for.
+
+    Drafted and stored, never sent: nothing here dispatches an email. `status`
+    stays "draft" until a human explicitly sends it, which this build does
+    not do on anyone's behalf.
+    """
+    if not drafts.get("recap"):
+        return 0
+
+    session.add(
+        Communication(
+            meeting_id=meeting.id,
+            kind=CommunicationKind.RECAP_EMAIL,
+            subject=drafts.get("recap_subject"),
+            body=drafts["recap"],
+        )
+    )
+    return 1
 
 
 def _save_trace(session: AsyncSession, *, run: Run, recorder: RunTrace) -> int:

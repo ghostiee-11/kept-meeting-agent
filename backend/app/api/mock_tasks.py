@@ -88,13 +88,16 @@ async def _simulate_transport(settings: SettingsDep, *, phase: Literal["pre", "p
     if phase == "pre" and settings.mock_latency_ms:
         await asyncio.sleep(settings.mock_latency_ms / 1000)
 
-    if phase == "pre" and settings.mock_fail_first_n > 0:
-        if next(_attempts) <= settings.mock_fail_first_n:
-            log.info("mock_task_api.injected_failure", phase=phase, mode="first_n")
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "Injected failure (first-n).",
-            )
+    if (
+        phase == "pre"
+        and settings.mock_fail_first_n > 0
+        and next(_attempts) <= settings.mock_fail_first_n
+    ):
+        log.info("mock_task_api.injected_failure", phase=phase, mode="first_n")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Injected failure (first-n).",
+        )
 
     if settings.mock_failure_rate <= 0:
         return
