@@ -17,11 +17,25 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: "3.12"
+
+      # The Operator calls the mock task API over real HTTP rather than in
+      # process, so it needs the service's own public URL.
+      - key: SELF_BASE_URL
+        fromService:
+          type: web
+          name: kept-api
+          property: hostport
       - key: GIT_SHA
         fromService:
           type: web
           name: kept-api
           property: commitId
+
+      # Groq's free tier allows 8000 tokens per minute and each extraction
+      # brief is roughly 3500. Two at once fits; three does not.
+      - key: ANALYST_CONCURRENCY
+        value: "2"
+
       # Everything below is set in the Render dashboard, not in this file.
       - key: DATABASE_URL
         sync: false
