@@ -3,6 +3,20 @@
 This is the agent that makes Kept a ledger rather than a summarizer. Everything
 else processes one meeting; this one connects them.
 
+Reconciliation runs **per open commitment against the whole new transcript**,
+not the other way round. The first version of this module worked the other
+way: it took whatever the Analyst had freshly extracted this meeting and tried
+to match each one against the ledger. That failed on the case that matters
+most. "Legal came back clean, so I shipped it Monday as planned" is a status
+report, not a new promise, so the Analyst correctly never turns it into a
+commitment, and a completion the ledger most needs to hear about was invisible
+before it ever reached the Historian.
+
+Asking, for each open commitment, "does this meeting say anything about this,
+and if so what" is what a person reconciling a promise list against a meeting
+actually does, and it does not depend on some other agent having re-surfaced
+the exact sentence in the right shape first.
+
 Two outputs, and the second matters more:
 
 **Slippage.** A commitment promised again with a new date is a slip. The
@@ -18,6 +32,7 @@ nothing in the transcript to summarise.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import date
@@ -27,7 +42,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import prompts
 from app.agents.base import AgentSpec, build_agent
-from app.agents.contracts import ExtractedCommitment
 from app.config import Settings
 from app.logging import get_logger
 from app.models.base import ActorKind, CommitmentStatus, EventType, MentionOutcome
@@ -41,16 +55,25 @@ log = get_logger(__name__)
 # Outcomes that mean the commitment is finished, one way or another.
 _CLOSING = {MentionOutcome.COMPLETED, MentionOutcome.DESCOPED}
 
+# Free-tier models under load intermittently return an empty generation that
+# fails schema validation rather than a clean error. Long enough for a
+# per-minute token window to roll over before trying again.
+_RETRY_PAUSE_SECONDS = 20.0
+
+# One Historian call per open commitment, each carrying the whole transcript.
+# A real workspace has a handful of things open at once; this caps the cost on
+# one that has accumulated a long tail of stale commitments nobody closed out.
+MAX_COMMITMENTS_CHECKED = 12
+
 
 class MatchVerdict(BaseModel):
-    candidate_index: int = Field(
-        description="Which shortlisted commitment this is, or -1 for none of them."
+    mentioned: bool = Field(
+        description="Whether this meeting says anything about this specific commitment."
     )
-    relation: str = Field(description="same, related, or different.")
     outcome: str = Field(
         default="progress",
         description=(
-            "Only when relation is same: progress, completed, recommitted, "
+            "Only when mentioned is true: progress, completed, recommitted, "
             "blocked, descoped, or contradicted."
         ),
     )
@@ -58,7 +81,7 @@ class MatchVerdict(BaseModel):
         default=None, description="The new deadline as spoken, when recommitted."
     )
     blocker: str | None = Field(default=None, description="What is in the way, when blocked.")
-    reasoning: str = Field(description="One sentence a human can check.")
+    reasoning: str = Field(description="One sentence a human can check against the transcript.")
 
 
 @dataclass
@@ -98,7 +121,7 @@ class Slippage:
 
 async def reconcile(
     session: AsyncSession,
-    new_commitments: list[tuple[ExtractedCommitment, str | None]],
+    transcript: str,
     *,
     workspace_id: uuid.UUID,
     meeting_id: uuid.UUID,
@@ -107,10 +130,12 @@ async def reconcile(
     router: ModelRouter,
     settings: Settings,
 ) -> Slippage:
-    """Match this meeting's commitments against the open ledger and update it.
+    """Check every open commitment against this meeting's transcript.
 
-    `new_commitments` pairs each extracted commitment with its resolved owner
-    name, because owner is half of what makes two commitments the same one.
+    Ranked by lexical similarity first so the commitments most likely to be
+    relevant are the ones checked when a ledger has grown past
+    `MAX_COMMITMENTS_CHECKED`; a promise nobody has mentioned in months is also
+    the one least likely to come up in today's meeting.
     """
     existing = await ledger.open_commitments(
         session, workspace_id=workspace_id, exclude_meeting_id=meeting_id
@@ -121,11 +146,15 @@ async def reconcile(
         trace.record("historian", "artifact", payload={"open_commitments": 0})
         return result
 
+    to_check = sorted(existing, key=lambda c: ledger.similarity(c.text, transcript), reverse=True)[
+        :MAX_COMMITMENTS_CHECKED
+    ]
+
     agent = build_agent(
         AgentSpec(
             name="historian",
             tier=Tier.REASON,
-            purpose="Match commitments against earlier meetings and record what happened.",
+            purpose="Check open commitments against this meeting's transcript.",
             system_prompt=prompts.HISTORIAN,
             response_format=MatchVerdict,
         ),
@@ -133,32 +162,19 @@ async def reconcile(
         settings=settings,
     )
 
-    for commitment, owner in new_commitments:
-        candidates = ledger.rank_candidates(commitment.text, owner, existing)
-        if not candidates:
-            continue
-
-        verdict = await _adjudicate(agent, commitment, owner, candidates)
-        if verdict is None or verdict.relation.strip().lower() != "same":
-            continue
-        if not 0 <= verdict.candidate_index < len(candidates):
-            # Models miscount lists, and acting on a bad index would rewrite
-            # the history of somebody else's commitment.
-            continue
-
-        matched = candidates[verdict.candidate_index].commitment
-        if matched.id in result.matched_ids:
+    for commitment in to_check:
+        verdict = await _check_one(agent, commitment, transcript)
+        if verdict is None or not verdict.mentioned:
             continue
 
         _apply(
             session,
-            matched,
+            commitment,
             verdict,
             result,
             meeting_id=meeting_id,
             meeting_date=meeting_date,
             timezone=timezone,
-            similarity=candidates[verdict.candidate_index].score,
         )
 
     _record_silence(session, existing, result, meeting_id=meeting_id, as_of=meeting_date)
@@ -168,6 +184,7 @@ async def reconcile(
         "artifact",
         payload={
             "open": len(existing),
+            "checked": len(to_check),
             "matched": len(result.matched_ids),
             "slipped": len(result.slipped),
             "unmentioned": len(result.unmentioned),
@@ -176,35 +193,33 @@ async def reconcile(
     return result
 
 
-async def _adjudicate(
-    agent: object,
-    commitment: ExtractedCommitment,
-    owner: str | None,
-    candidates: list[ledger.Candidate],
-) -> MatchVerdict | None:
-    listing = "\n".join(
-        f"[{index}] {candidate.commitment.text} "
-        f"(due {candidate.commitment.due_date or 'no date'}, "
-        f"slipped {candidate.commitment.slip_count}x) — {candidate.reason}"
-        for index, candidate in enumerate(candidates)
-    )
+async def _check_one(agent: object, commitment: Commitment, transcript: str) -> MatchVerdict | None:
     message = (
-        f"New commitment: {commitment.text}\n"
-        f"Owner: {owner or 'unknown'}\n"
-        f'Said as: "{commitment.evidence[0].quote}"\n'
-        f"Deadline as spoken: {commitment.due_hint or 'none given'}\n\n"
-        f"Open commitments it might be:\n{listing}\n\n"
-        "Is this one of them, and if so what happened to it?"
+        f"Open commitment: {commitment.text}\n"
+        f"Owner: {commitment.owner.name if commitment.owner else 'unowned'}\n"
+        f"Due: {commitment.due_date or 'no date'}"
+        f"{f' (moved {commitment.slip_count}x already)' if commitment.slip_count else ''}\n\n"
+        f"This meeting's transcript:\n{transcript}\n\n"
+        "Does this meeting say anything about the commitment above? If so, what happened to it?"
     )
 
-    try:
-        result = await agent.ainvoke({"messages": [{"role": "user", "content": message}]})  # type: ignore[attr-defined]
-    except Exception as exc:
-        log.warning("historian.failed", error=str(exc)[:200])
-        trace.record("historian", "error", payload={"error": str(exc)[:200]})
-        return None
-    verdict: MatchVerdict | None = result.get("structured_response")
-    return verdict
+    # One retry, not a loop: the same policy extraction uses, for the same
+    # reason. A model that cannot produce valid JSON twice is not going to get
+    # there on a third attempt, and the budget is better spent elsewhere.
+    for attempt in (1, 2):
+        try:
+            if attempt > 1:
+                await asyncio.sleep(_RETRY_PAUSE_SECONDS)
+            result = await agent.ainvoke({"messages": [{"role": "user", "content": message}]})  # type: ignore[attr-defined]
+        except Exception as exc:
+            log.warning("historian.failed", attempt=attempt, error=str(exc)[:200])
+            trace.record(
+                "historian", "error", payload={"attempt": attempt, "error": str(exc)[:200]}
+            )
+            continue
+        verdict: MatchVerdict | None = result.get("structured_response")
+        return verdict
+    return None
 
 
 def _apply(
@@ -216,7 +231,6 @@ def _apply(
     meeting_id: uuid.UUID,
     meeting_date: date,
     timezone: str,
-    similarity: float,
 ) -> None:
     """Update the ledger row, and append to its history."""
     outcome = _outcome_of(verdict.outcome)
@@ -291,7 +305,6 @@ def _apply(
             meeting_id=meeting_id,
             outcome=outcome,
             reasoning=verdict.reasoning,
-            similarity=similarity,
         )
     )
 

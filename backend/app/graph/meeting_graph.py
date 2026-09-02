@@ -309,7 +309,7 @@ def build_meeting_graph(
         async with session_factory() as session:
             found = await reconcile(
                 session,
-                [(item.commitment, item.attribution.display_name) for item in state["items"]],
+                state["transcript"],
                 workspace_id=uuid.UUID(state["workspace_id"]),
                 meeting_id=uuid.UUID(state["meeting_id"]),
                 meeting_date=state["meeting_date"],

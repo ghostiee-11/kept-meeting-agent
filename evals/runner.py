@@ -232,6 +232,23 @@ async def main() -> int:
           f"skeptic={router.primary(Tier.SKEPTIC).identifier} "
           f"independent_review={router.describe()['independent_review']}\n")
 
+    scored_cases = []
+    for path in cases:
+        spec = json.loads(path.read_text())
+        if "commitments" not in spec.get("expected", {}):
+            # A paired-transcript case with no commitment labels of its own.
+            # Scoring it with the fuzzy commitment matcher below produced
+            # precision=1.00 recall=1.00 on an empty expected set, which reads
+            # as a perfect score for a case the harness never actually tested.
+            # Cross-meeting slippage has its own proof: see
+            # tests/test_historian_slippage.py, which runs this exact pair
+            # through the real Historian against a live database and asserts
+            # on what it found.
+            print(f"  {path.stem:22} skipped: slippage case, see test_historian_slippage.py")
+            continue
+        scored_cases.append(path)
+    cases = scored_cases
+
     results = []
     for path in cases:
         # Sequential, and paced. The free tier allows 8000 tokens a minute and
