@@ -122,41 +122,73 @@ REGISTRY: dict[str, ModelSpec] = {
         # against, caught the same way, by checking rather than assuming.
         ModelSpec(Provider.GOOGLE, "gemini-3-flash-preview", "json_schema", 0.30, 2.50, 1_048_576),
         ModelSpec(Provider.GOOGLE, "gemini-2.5-flash-lite", "json_schema", 0.10, 0.40, 1_048_576),
-        ModelSpec(Provider.OPENAI, "gpt-5.5-mini", "json_schema", 0.25, 2.00, 400_000),
-        ModelSpec(Provider.OPENAI, "gpt-5.5", "json_schema", 1.25, 10.00, 400_000),
+        # Prices are OpenAI's published list, read from the pricing docs rather
+        # than remembered.
+        #
+        # gpt-5-mini is deliberately absent despite being the obvious value
+        # pick. It appears in this account's /v1/models listing and returns 404
+        # on use: "your organization must be verified". A listing is not an
+        # entitlement, which is the same lesson the Groq model IDs taught, one
+        # layer further in. Every identifier below was called once before being
+        # written down.
+        ModelSpec(Provider.OPENAI, "gpt-5.4-mini", "json_schema", 0.75, 4.50, 400_000),
+        ModelSpec(Provider.OPENAI, "gpt-5.4-nano", "json_schema", 0.20, 1.25, 400_000),
+        ModelSpec(Provider.OPENAI, "gpt-4.1-mini", "json_schema", 0.40, 1.60, 1_047_576),
+        ModelSpec(Provider.OPENAI, "gpt-4.1-nano", "json_schema", 0.10, 0.40, 1_047_576),
+        ModelSpec(Provider.OPENAI, "gpt-5.5", "json_schema", 5.00, 30.00, 400_000),
     ]
 }
 
 # Preference order per tier. Filtered at boot to whatever has credentials.
 TIER_CHAINS: dict[Tier, list[str]] = {
     Tier.FAST: [
+        # Routing and short drafts: a few hundred tokens of structured
+        # decision, so paying reason-tier prices here buys nothing.
+        #
+        # Not gpt-5-nano, which is cheaper on paper and slower in practice. It
+        # spent 64 reasoning tokens deciding to answer "ok", and the supervisor
+        # makes a dozen of these calls per run.
+        "openai:gpt-5.4-nano",
         "groq:openai/gpt-oss-20b",
         "google_genai:gemini-2.5-flash-lite",
-        "openai:gpt-5.5-mini",
     ],
     Tier.REASON: [
+        # Paid first, free second, which is the opposite of the obvious order
+        # and the right one. Groq's free tier is not slow, it is rate limited:
+        # measured over a full run, roughly seventy percent of the wall clock
+        # was spent waiting for a token window to roll over rather than waiting
+        # for a model. A few cents a meeting buys that back.
+        "openai:gpt-5.4-mini",
         "groq:openai/gpt-oss-120b",
-        # Flash-Lite rather than the newer Flash, which is capped at twenty
-        # requests a day on the free tier. Twenty a day is not a fallback, it
-        # is a demo allowance, and a fallback that is itself exhausted turns a
-        # recoverable 429 into a failed run.
         "google_genai:gemini-2.5-flash-lite",
-        "openai:gpt-5.5-mini",
         # Same provider, smaller model, as a last resort. Groq's token-per-minute
         # limits are per model, so stepping down within Groq genuinely relieves
-        # pressure rather than hitting the same ceiling again. It only matters
-        # when no second provider is configured, which is exactly when a 429
-        # would otherwise be fatal.
+        # pressure rather than hitting the same ceiling again.
         "groq:openai/gpt-oss-20b",
     ],
     Tier.SKEPTIC: [
-        "google_genai:gemini-2.5-flash-lite",
-        "google_genai:gemini-3-flash-preview",
-        "openai:gpt-5.5-mini",
-        "groq:qwen/qwen3.8-27b",
+        # Ordered to land on a provider the Analyst did not use, which the
+        # router enforces at build time. Review is only worth a second call if
+        # the reviewer can disagree.
         "groq:openai/gpt-oss-120b",
+        "google_genai:gemini-2.5-flash-lite",
+        # A different model rather than a different vendor. Provider diversity
+        # is worth a lot and is not worth everything: qwen, which used to sit
+        # here, answered two reviews in 75 seconds, half of that run's wall
+        # clock, and it stayed ahead of these because the diversity rule sorts
+        # by vendor rather than by speed. A weaker independence guarantee beats
+        # a review nobody waits for, so qwen is gone.
+        "openai:gpt-4.1-mini",
+        "openai:gpt-5.4-mini",
     ],
-    Tier.JUDGE: ["openai:gpt-5.5", "google_genai:gemini-3-flash-preview"],
+    # Never the vendor that produced the output. With generators on OpenAI, an
+    # OpenAI judge would be marking its own family's homework, which is the
+    # failure the separate tier exists to prevent.
+    Tier.JUDGE: [
+        "google_genai:gemini-2.5-flash-lite",
+        "groq:openai/gpt-oss-120b",
+        "openai:gpt-5.4-mini",
+    ],
     Tier.GUARD: ["groq:meta-llama/llama-prompt-guard-2-86m"],
 }
 

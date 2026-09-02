@@ -66,8 +66,20 @@ _RETRY_PAUSE_SECONDS = 20.0
 # one that has accumulated a long tail of stale commitments nobody closed out.
 MAX_COMMITMENTS_CHECKED = 12
 
+# How many open commitments go into one prompt. The transcript is the
+# expensive part and is sent once per batch rather than once per commitment,
+# which on a free tier is the difference between a run that flows and one that
+# spends most of its wall clock waiting for a token window to roll over. Four
+# rather than all of them, because a model asked about a dozen things at once
+# starts skipping some.
+BATCH_SIZE = 4
+
 
 class MatchVerdict(BaseModel):
+    commitment: int = Field(
+        default=0,
+        description="The number of the open commitment this verdict is about.",
+    )
     mentioned: bool = Field(
         description="Whether this meeting says anything about this specific commitment."
     )
@@ -93,6 +105,18 @@ class MatchVerdict(BaseModel):
         ),
     )
     reasoning: str = Field(description="One sentence a human can check against the transcript.")
+
+
+class MatchBatch(BaseModel):
+    """One verdict per open commitment put to the model.
+
+    Batched because the transcript is the expensive part of this prompt and
+    asking about one commitment at a time sends it again for each. On a free
+    tier that is the difference between a run that flows and a run that spends
+    most of its wall clock waiting for a token window to roll over.
+    """
+
+    verdicts: list[MatchVerdict] = Field(default_factory=list)
 
 
 @dataclass
@@ -178,30 +202,32 @@ async def reconcile(
             tier=Tier.REASON,
             purpose="Check open commitments against this meeting's transcript.",
             system_prompt=prompts.HISTORIAN,
-            response_format=MatchVerdict,
+            response_format=MatchBatch,
         ),
         router=router,
         settings=settings,
     )
 
-    for commitment in to_check:
-        verdict = await _check_one(agent, commitment, transcript, items)
-        if verdict is None or not verdict.mentioned:
-            continue
+    for batch in _batches(to_check):
+        verdicts = await _check_batch(agent, batch, transcript, items)
+        for verdict in verdicts:
+            if not verdict.mentioned or not 0 <= verdict.commitment < len(batch):
+                continue
+            commitment = batch[verdict.commitment]
 
-        restated = _restated_index(verdict, commitment, items, already=result.restated)
-        if restated is not None:
-            result.restated.add(restated)
+            restated = _restated_index(verdict, commitment, items, already=result.restated)
+            if restated is not None:
+                result.restated.add(restated)
 
-        _apply(
-            session,
-            commitment,
-            verdict,
-            result,
-            meeting_id=meeting_id,
-            meeting_date=meeting_date,
-            timezone=timezone,
-        )
+            _apply(
+                session,
+                commitment,
+                verdict,
+                result,
+                meeting_id=meeting_id,
+                meeting_date=meeting_date,
+                timezone=timezone,
+            )
 
     _record_silence(session, existing, result, meeting_id=meeting_id, as_of=meeting_date)
 
@@ -219,18 +245,19 @@ async def reconcile(
     return result
 
 
-async def _check_one(
-    agent: object, commitment: Commitment, transcript: str, items: list[ResolvedItem]
-) -> MatchVerdict | None:
+async def _check_batch(
+    agent: object,
+    batch: list[Commitment],
+    transcript: str,
+    items: list[ResolvedItem],
+) -> list[MatchVerdict]:
     message = (
-        f"Open commitment: {commitment.text}\n"
-        f"Owner: {commitment.owner.name if commitment.owner else 'unowned'}\n"
-        f"Due: {commitment.due_date or 'no date'}"
-        f"{f' (moved {commitment.slip_count}x already)' if commitment.slip_count else ''}\n\n"
+        f"{_open_list(batch)}\n\n"
         f"This meeting's transcript:\n{transcript}\n\n"
         f"{_numbered(items)}\n"
-        "Does this meeting say anything about the commitment above? If so, what "
-        "happened to it, and is one of this meeting's obligations the same promise?"
+        "For each open commitment above, say whether this meeting mentions it, "
+        "what happened to it, and whether one of this meeting's obligations is "
+        "the same promise. Return one verdict per open commitment."
     )
 
     # One retry, not a loop: the same policy extraction uses, for the same
@@ -247,9 +274,33 @@ async def _check_one(
                 "historian", "error", payload={"attempt": attempt, "error": str(exc)[:200]}
             )
             continue
-        verdict: MatchVerdict | None = result.get("structured_response")
-        return verdict
-    return None
+        found: MatchBatch | None = result.get("structured_response")
+        return found.verdicts if found else []
+    return []
+
+
+def _batches(commitments: list[Commitment]) -> list[list[Commitment]]:
+    """Split the open commitments into chunks small enough to stay accurate.
+
+    All of them in one prompt would be one call and measurably worse: a model
+    asked about fifteen things at once starts skipping them. Small chunks keep
+    the per-commitment attention that made this agent work while still sending
+    the transcript a handful of times instead of once per row.
+    """
+    return [
+        commitments[start : start + BATCH_SIZE] for start in range(0, len(commitments), BATCH_SIZE)
+    ]
+
+
+def _open_list(batch: list[Commitment]) -> str:
+    """The open commitments under review, numbered for the model to answer by."""
+    lines = ["Open commitments from earlier meetings:"]
+    for index, commitment in enumerate(batch):
+        owner = commitment.owner.name if commitment.owner else "unowned"
+        due = commitment.due_date or "no date"
+        moved = f", moved {commitment.slip_count}x already" if commitment.slip_count else ""
+        lines.append(f"  {index}. {commitment.text} | {owner} | due {due}{moved}")
+    return "\n".join(lines)
 
 
 def _numbered(items: list[ResolvedItem]) -> str:

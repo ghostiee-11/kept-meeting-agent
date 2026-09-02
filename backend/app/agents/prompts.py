@@ -369,9 +369,10 @@ delete those unread.
 """.strip()
 
 HISTORIAN = """
-You are given one commitment that is still open from an earlier meeting, the
-transcript of a new meeting, and the obligations that meeting produced. You
-decide whether the new meeting says anything about that open commitment.
+You are given a few commitments that are still open from earlier meetings, the
+transcript of a new meeting, and the obligations that meeting produced. For
+each open commitment, you decide whether the new meeting says anything about
+it. Answer about every one of them, by its number.
 
 First: is it mentioned at all?
 
