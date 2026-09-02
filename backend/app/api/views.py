@@ -413,6 +413,65 @@ async def list_clarifications(
     ]
 
 
+class RunSummary(BaseModel):
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    meeting_title: str
+    status: str
+    cost_usd: float
+    tokens_in: int
+    tokens_out: int
+    error: str | None
+    created_at: datetime
+    agents: int
+    """Distinct agents that did something, which is the multi-agent claim in
+    one number rather than in prose."""
+
+
+@router.get("/runs", response_model=list[RunSummary])
+async def list_runs(
+    session: SessionDep, limit: Annotated[int, Query(le=50)] = 20
+) -> list[RunSummary]:
+    runs = (await session.scalars(select(Run).order_by(Run.created_at.desc()).limit(limit))).all()
+    if not runs:
+        return []
+
+    titles = {
+        meeting.id: meeting.title
+        for meeting in (
+            await session.scalars(
+                select(Meeting).where(Meeting.id.in_([run.meeting_id for run in runs]))
+            )
+        ).all()
+    }
+    agent_counts = {
+        run_id: count
+        for run_id, count in (
+            await session.execute(
+                select(AgentTraceEntry.run_id, func.count(func.distinct(AgentTraceEntry.agent)))
+                .where(AgentTraceEntry.run_id.in_([run.id for run in runs]))
+                .group_by(AgentTraceEntry.run_id)
+            )
+        ).all()
+    }
+
+    return [
+        RunSummary(
+            id=run.id,
+            meeting_id=run.meeting_id,
+            meeting_title=titles.get(run.meeting_id, "Unknown meeting"),
+            status=run.status.value,
+            cost_usd=run.cost_usd,
+            tokens_in=run.tokens_in,
+            tokens_out=run.tokens_out,
+            error=run.error,
+            created_at=run.created_at,
+            agents=agent_counts.get(run.id, 0),
+        )
+        for run in runs
+    ]
+
+
 @router.get("/runs/{run_id}", response_model=RunOut)
 async def get_run(run_id: uuid.UUID, session: SessionDep) -> RunOut:
     run = await session.get(Run, run_id)
