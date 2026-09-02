@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-backend dev-frontend test lint fmt typecheck check seed migrate eval clean
+.PHONY: help install dev dev-backend dev-frontend test lint fmt typecheck check seed migrate eval eval-ablation clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -40,7 +40,13 @@ migrate: ## Apply database migrations
 	cd backend && uv run alembic upgrade head
 
 eval: ## Regenerate the evaluation report
-	cd backend && uv run python -m evals.runner --report ../docs/EVALUATION.md
+	# Run from backend so the app package and its lockfile resolve, with the
+	# repo root on the path so `evals` does too. It lives outside the backend
+	# package on purpose: the harness is not part of what deploys.
+	cd backend && PYTHONPATH=.. uv run python -m evals.runner --report ../docs/EVALUATION.md
+
+eval-ablation: ## Regenerate the report, including the ablation study
+	cd backend && PYTHONPATH=.. uv run python -m evals.runner --ablation --report ../docs/EVALUATION.md
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

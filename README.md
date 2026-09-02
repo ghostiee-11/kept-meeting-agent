@@ -46,7 +46,7 @@ Everything below exists to fix one of those.
 
 ## What it does
 
-Paste a transcript. Nine agents across three teams process it while you watch,
+Paste a transcript. Ten agents across four teams process it while you watch,
 and you end up with:
 
 **Grounded commitments.** Every extracted item carries a verbatim quote from the
@@ -70,8 +70,20 @@ real HTTP, with an idempotency key derived from the commitment so a retry never
 duplicates it. Unowned commitments are deliberately *not* assigned to anyone.
 
 **Explainable risk.** Not an LLM's opinion: a pure function whose per-factor
-contributions are shown. "Slipped twice (+0.25), unmentioned for two meetings
-(+0.20), owner inferred rather than stated (+0.06)".
+contributions are shown. "Unmentioned for two meetings (+0.27), 5 days past due
+(+0.25), owner inferred rather than stated (+0.04)". Evidence of trouble
+outranks gaps in what was extracted, because slippage has happened and a
+missing owner is only something the system does not yet know.
+
+**Memory across meetings.** Paste the follow-up and the Historian checks every
+still-open promise against it: what progressed, what moved to a new date, and
+what nobody mentioned at all. Silence is the strongest failure signal in the
+system and the one no summarizer produces.
+
+**Something that runs when a date passes.** A nightly sweep finds what went
+overdue and drafts one nudge per person who is late, because the failure
+meetings are worst at catching is the one nobody convenes to notice. Drafted
+and stored, never sent.
 
 ---
 
@@ -93,19 +105,19 @@ each one may and may not touch, is in **[docs/AGENTS.md](docs/AGENTS.md)**.
 ```
                     ┌──────────────────┐
                     │  CHIEF OF STAFF  │   plans · routes · replans · finishes
-                    └──┬──────┬──────┬─┘   tools: handoffs and a terminator only
-        ┌──────────────┘      │      └──────────────┐
-        ▼                     ▼                     ▼
-┌───────────────┐    ┌────────────────┐    ┌─────────────────┐
-│ INTELLIGENCE  │    │   RESOLUTION   │    │    EXECUTION    │
-│ scribe        │    │ attributor     │    │ operator        │
-│ analyst ×3    │    │ chronos        │    │ herald          │
-│ skeptic       │    │ researcher     │    │                 │
-└───────┬───────┘    └────────┬───────┘    └────────┬────────┘
-        └─────────────────────┼─────────────────────┘
+                    └──┬────┬────┬───┬─┘   tools: handoffs and a terminator only
+        ┌──────────────┘    │    │   └────────────────┐
+        ▼                   ▼    ▼                    ▼
+┌───────────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐
+│ INTELLIGENCE  │  │  RESOLUTION  │  │ HISTORY  │  │ EXECUTION  │
+│ scribe        │  │ attributor   │  │historian │  │ operator   │
+│ analyst ×3    │  │ chronos      │  │          │  │ herald     │
+│ skeptic       │  │ researcher   │  │          │  │            │
+└───────┬───────┘  └──────┬───────┘  └────┬─────┘  └─────┬──────┘
+        └─────────────────┴───────────────┴──────────────┘
                               ▼
-         shared blackboard · typed artifacts only
-         + deterministic services: verifier · risk scorer
+        shared blackboard · typed artifacts only
+        + deterministic services: verifier · risk scorer
 ```
 
 ---
@@ -128,7 +140,7 @@ after creation.
 
 ```bash
 make check     # lint, types, and tests, the same as CI
-make test      # 128 tests
+make test      # 152 tests
 make eval      # regenerate docs/EVALUATION.md
 ```
 
@@ -176,15 +188,20 @@ looks broken, because an honest wait beats a hidden one.
 
 Stated here rather than discovered by the reviewer.
 
-**One model provider is configured.** With only Groq, three things are weaker
-than designed. Runs occasionally fail under load, because the free tier allows
-8000 tokens per minute and each extraction brief is roughly 3500. The Skeptic
-falls back to a different Groq model rather than a different provider, so
-`/health` reports `independent_review: false` and adversarial review is less
-independent than intended. And the evaluation judge is disabled, since a judge
-must not be the model that produced the output. Adding `GOOGLE_API_KEY` and
-`OPENAI_API_KEY` fixes all three with no code change; the routing is already
-written.
+**No OpenAI key is configured.** Groq and Gemini are, so the Skeptic does run
+on a different provider from the Analyst and adversarial review is genuinely
+independent. What is missing is the evaluation judge, which is pinned to a
+provider that produced none of the output: with no third provider it is
+disabled rather than quietly graded by a model marking its own work. Adding
+`OPENAI_API_KEY` turns it on with no code change.
+
+**Free-tier throughput is the binding constraint.** Groq allows 8000 tokens per
+minute per model and, separately, a daily cap that no amount of backoff can
+retry its way past. The system pages around the per-minute limit with a
+sliding-window budget and alternates between two independently rate-limited
+Groq accounts, which is a real doubling rather than a nominal one. A long
+transcript still takes longer than it would on a paid tier, because waiting is
+the correct behaviour and failing is not.
 
 **Extraction varies between runs at temperature 0.** Free-tier fallback means
 the same transcript can be processed by a different model on a different run.
