@@ -412,6 +412,11 @@ class PersonSummary(BaseModel):
     name: str
     role: str | None
     aliases: list[str]
+    source: str
+    """`roster` if a human put them there, `transcript` if the system enrolled
+    them because they spoke in a meeting. Shown rather than hidden: the second
+    is the system's reading of a speaker label, not verified data."""
+
     open_items: int
     overdue: int
     at_risk: int
@@ -452,6 +457,7 @@ async def list_people(session: SessionDep, settings: SettingsDep) -> list[Person
             name=person.name,
             role=person.role,
             aliases=person.aliases,
+            source=person.source,
             open_items=len(owned),
             overdue=len([c for c in owned if c.due_date and c.due_date < today]),
             at_risk=len([c for c in owned if _assess(c, today).band != "low"]),
@@ -500,6 +506,7 @@ async def person_ledger(
             name=person.name,
             role=person.role,
             aliases=person.aliases,
+            source=person.source,
             open_items=len(open_items),
             overdue=len([c for c in open_items if c.due_date and c.due_date < today]),
             at_risk=len([c for c in open_items if _assess(c, today).band != "low"]),

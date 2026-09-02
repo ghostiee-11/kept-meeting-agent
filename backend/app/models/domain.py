@@ -88,6 +88,18 @@ class Person(Base, TimestampMixin):
     role: Mapped[str | None] = mapped_column(String(120))
     team: Mapped[str | None] = mapped_column(String(120))
 
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="roster")
+    """Where this person came from: `roster` if a human put them there,
+    `transcript` if the system enrolled them because they spoke in a meeting.
+
+    Kept apart because they are not the same claim. A seeded person is
+    verified; a learned one is the system's reading of a speaker label, and
+    the console says so rather than presenting the two as equivalent."""
+
+    first_seen_meeting_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("meetings.id", ondelete="SET NULL")
+    )
+
     workspace: Mapped[Workspace] = relationship(back_populates="people")
 
 

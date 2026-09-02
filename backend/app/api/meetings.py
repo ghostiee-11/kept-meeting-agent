@@ -31,7 +31,7 @@ from app.models.domain import Meeting, Person, Run, Workspace
 from app.security.auth import require_demo_key
 from app.services import persistence, trace
 from app.services.model_router import ModelRouter
-from app.services.roster import RosterEntry
+from app.services.roster import RosterEntry, unenrolled_speakers
 from app.services.search import SearchService
 from app.services.segmentation import participants, segment, turn_texts
 from app.services.temporal import today_in
@@ -64,6 +64,57 @@ async def _load_workspace(session: SessionDep) -> Workspace:
     return workspace
 
 
+async def _roster(session: SessionDep, workspace_id: uuid.UUID) -> list[RosterEntry]:
+    return [
+        RosterEntry(person.id, person.name, tuple(person.aliases), person.role)
+        for person in (
+            await session.scalars(select(Person).where(Person.workspace_id == workspace_id))
+        ).all()
+    ]
+
+
+async def _enrol_speakers(
+    session: SessionDep,
+    *,
+    workspace_id: uuid.UUID,
+    meeting_id: uuid.UUID,
+    speakers: list[str],
+    roster: list[RosterEntry],
+) -> list[str]:
+    """Add anyone who spoke in this meeting and is not yet known.
+
+    The roster is workspace data, not a constant, and a system that can only
+    recognise people a seed script named is useless the day someone joins. A
+    speaker label is the strongest identity evidence a transcript carries:
+    whoever said "I'll do it" was in the room.
+
+    Enrolment stops short of the judgment calls. A label that matches anyone
+    already known, or matches two of them, is left alone: those are a spelling
+    to reconcile and a question for a human, and inventing a person would bury
+    both. See `unenrolled_speakers` for the full rule.
+
+    They are marked `source="transcript"` rather than passed off as verified
+    roster entries, because the two are not the same claim.
+    """
+    new_names = unenrolled_speakers(speakers, roster)
+    if not new_names:
+        return []
+
+    for name in new_names:
+        session.add(
+            Person(
+                workspace_id=workspace_id,
+                name=name,
+                aliases=[name],
+                source="transcript",
+                first_seen_meeting_id=meeting_id,
+            )
+        )
+    await session.flush()
+    log.info("roster.enrolled", meeting_id=str(meeting_id), names=new_names)
+    return new_names
+
+
 @router.post("/run", dependencies=[Depends(require_demo_key)])
 async def run_meeting(
     payload: RunRequest,
@@ -79,12 +130,7 @@ async def run_meeting(
         )
 
     workspace = await _load_workspace(session)
-    roster = [
-        RosterEntry(person.id, person.name, tuple(person.aliases), person.role)
-        for person in (
-            await session.scalars(select(Person).where(Person.workspace_id == workspace.id))
-        ).all()
-    ]
+    roster = await _roster(session, workspace.id)
 
     turns = segment(payload.transcript)
     occurred_at = payload.occurred_at or datetime.now(UTC)
@@ -99,6 +145,16 @@ async def run_meeting(
         turns=[turn.as_dict() for turn in turns],
         project=payload.project,
     )
+
+    enrolled = await _enrol_speakers(
+        session,
+        workspace_id=workspace.id,
+        meeting_id=meeting.id,
+        speakers=participants(turns),
+        roster=roster,
+    )
+    if enrolled:
+        roster = await _roster(session, workspace.id)
 
     thread_id = str(uuid.uuid4())
     run = Run(meeting_id=meeting.id, thread_id=thread_id, status=RunStatus.RUNNING)

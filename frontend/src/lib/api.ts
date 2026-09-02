@@ -86,6 +86,7 @@ export interface PersonSummary {
   name: string;
   role: string | null;
   aliases: string[];
+  source: string;
   open_items: number;
   overdue: number;
   at_risk: number;

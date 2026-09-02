@@ -76,6 +76,12 @@ export function PersonLedgerView({ personId }: { personId: string }) {
             {data.person.role ?? "no role recorded"} · also called{" "}
             {data.person.aliases.join(", ") || "nothing else"}
           </p>
+          {data.person.source === "transcript" && (
+            <p className="text-pending mt-1 text-[0.75rem]">
+              Enrolled from a meeting they spoke in. Nobody has confirmed the
+              spelling or the role yet.
+            </p>
+          )}
         </div>
         <dl className="flex gap-6">
           <Stat label="Open" value={data.person.open_items} />

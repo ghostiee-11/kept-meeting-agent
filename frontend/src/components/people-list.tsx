@@ -67,6 +67,14 @@ export function PeopleList() {
               <span className="text-paper-muted ml-2 text-[0.8125rem]">
                 {person.role ?? "no role recorded"}
               </span>
+              {person.source === "transcript" && (
+                <span
+                  className="t-data text-pending ml-2"
+                  title="Enrolled from a meeting they spoke in, rather than from the roster"
+                >
+                  learned
+                </span>
+              )}
             </span>
             <span className="t-data text-paper-muted shrink-0">
               {person.open_items} open

@@ -203,3 +203,80 @@ def _match_name(value: str, roster: list[RosterEntry]) -> tuple[RosterEntry, flo
     if best is None:
         return None
     return best[0], round(best[1] * 0.9, 3), "near match"
+
+
+# Speaker labels that are not people. A transcript exported from a tool often
+# carries these, and enrolling them would put "Everyone" on the roster and then
+# assign work to it.
+_NOT_A_PERSON = frozenset(
+    {
+        "unknown",
+        "unknown speaker",
+        "speaker",
+        "all",
+        "everyone",
+        "team",
+        "the team",
+        "group",
+        "attendees",
+        "participants",
+        "guest",
+        "guests",
+        "audio",
+        "recording",
+        "system",
+        "moderator",
+        "host",
+        "others",
+        "multiple speakers",
+    }
+)
+
+# A speaker label longer than this is a sentence that lost its colon, not a
+# name. Enrolling it would create a person nobody can ever match again.
+_MAX_NAME_WORDS = 4
+_MAX_NAME_CHARS = 60
+
+
+def unenrolled_speakers(speakers: list[str], roster: list[RosterEntry]) -> list[str]:
+    """Speakers this workspace has no person for yet.
+
+    A speaker label is the strongest evidence of identity a transcript
+    contains: someone who says "I'll do it" is in the room, whatever the
+    roster knows. Enrolling them is reading the transcript, not guessing.
+
+    Three things are deliberately *not* enrolled, because each would put a
+    person in the ledger who does not exist:
+
+    A label that matches someone already known, however loosely. "Preeya" is
+    Priya spelled badly, and a second row for her would split her promises
+    across two people.
+
+    A label that matches *more than one* person. "Alex" in a room with two of
+    them is a question for a human, and inventing a third Alex would bury it.
+
+    A label that is not a name at all: "Everyone", "Unknown Speaker", or a
+    sentence that lost its colon in transcription.
+    """
+    unknown: list[str] = []
+    seen: set[str] = set()
+
+    for speaker in speakers:
+        label = speaker.strip()
+        normalised = _normalise(label)
+
+        if not normalised or normalised in _NOT_A_PERSON or normalised in _COLLECTIVE:
+            continue
+        if len(label) > _MAX_NAME_CHARS or len(normalised.split()) > _MAX_NAME_WORDS:
+            continue
+        if normalised in seen:
+            continue
+        # `_match_name` returns a negative score for an ambiguous match, which
+        # is still a match: the person exists, we just cannot say which one.
+        if _match_name(label, roster) is not None:
+            continue
+
+        seen.add(normalised)
+        unknown.append(label)
+
+    return unknown
