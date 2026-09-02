@@ -80,6 +80,44 @@ DEMO_ROSTER: list[dict[str, object]] = [
         "role": "Customer Success Lead",
         "team": "Revenue",
     },
+    {
+        "name": "Kavya Iyer",
+        "aliases": ["Kavya", "Kav", "Kavya I"],
+        "email": "kavya@kept.demo",
+        "role": "Data Lead",
+        "team": "Platform",
+    },
+    {
+        "name": "Daniel Okafor",
+        "aliases": ["Daniel", "Dan", "Danny"],
+        "email": "daniel@kept.demo",
+        "role": "Platform Engineer",
+        "team": "Platform",
+    },
+    {
+        "name": "Lena Fischer",
+        "aliases": ["Lena", "Lena F"],
+        "email": "lena@kept.demo",
+        "role": "Product Designer",
+        "team": "Product",
+    },
+    # Two people who answer to "Alex", on purpose. A transcript that says only
+    # "Alex will take it" has no correct answer, and the system is supposed to
+    # ask rather than pick one. This pair is what makes that testable.
+    {
+        "name": "Alex Reyes",
+        "aliases": ["Alex", "Alex R"],
+        "email": "alex.reyes@kept.demo",
+        "role": "Security Engineer",
+        "team": "Platform",
+    },
+    {
+        "name": "Alex Duarte",
+        "aliases": ["Alex", "Alex D"],
+        "email": "alex.duarte@kept.demo",
+        "role": "Support Engineer",
+        "team": "Revenue",
+    },
 ]
 
 
