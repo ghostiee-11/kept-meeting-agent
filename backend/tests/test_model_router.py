@@ -68,6 +68,33 @@ def test_an_unknown_override_still_resolves_and_assumes_the_weaker_method() -> N
     assert spec.structured_output == "function_calling"
 
 
+def test_a_single_groq_key_is_always_used() -> None:
+    only_one = router(groq_api_key="k1")
+
+    assert only_one._api_key(Provider.GROQ) == "k1"
+    assert only_one._api_key(Provider.GROQ) == "k1"
+
+
+def test_two_groq_keys_alternate() -> None:
+    """Confirmed independently rate-limited by their own headers before this
+    was written: separate x-ratelimit-remaining counts and separate daily
+    caps. Alternating calls is a real doubling of throughput, not a nominal
+    split of one shared ceiling."""
+    two = router(groq_api_key="k1", groq_api_key_2="k2")
+
+    drawn = [two._api_key(Provider.GROQ) for _ in range(4)]
+
+    assert drawn == ["k1", "k2", "k1", "k2"]
+
+
+def test_a_second_key_is_optional() -> None:
+    """Configuring only the first key must not raise, since it is the common
+    case and the whole feature is additive."""
+    single = router(groq_api_key="k1", groq_api_key_2=None)
+
+    assert single.primary(Tier.FAST).provider is Provider.GROQ
+
+
 def test_cost_is_reported_per_million_tokens() -> None:
     spec = router(groq_api_key="k").primary(Tier.REASON)
 

@@ -57,6 +57,14 @@ class Settings(BaseSettings):
 
     # ---- Model providers ---------------------------------------------------
     groq_api_key: SecretStr | None = None
+    groq_api_key_2: SecretStr | None = None
+    """A second Groq account, optional. Confirmed by its own rate-limit headers
+    to be billed independently from the first: separate x-ratelimit-remaining
+    counts, and critically a separate daily token cap, which is the ceiling
+    that actually stopped a run in testing (the per-minute one is already paced
+    around). The router alternates between whichever keys are configured, which
+    is a real doubling of throughput rather than a nominal one."""
+
     google_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
 

@@ -24,6 +24,7 @@ model list at boot, so a retirement surfaces on ``/health`` rather than as a
 from __future__ import annotations
 
 import asyncio
+import itertools
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -103,7 +104,11 @@ REGISTRY: dict[str, ModelSpec] = {
         ModelSpec(Provider.GROQ, "openai/gpt-oss-120b", "json_schema", 0.15, 0.60),
         ModelSpec(Provider.GROQ, "qwen/qwen3.8-27b", "function_calling", 0.10, 0.30),
         ModelSpec(Provider.GROQ, "meta-llama/llama-prompt-guard-2-86m", "none", 0.0, 0.0, 512),
-        ModelSpec(Provider.GOOGLE, "gemini-3-flash", "json_schema", 0.30, 2.50, 1_048_576),
+        # Confirmed against the account's own /v1beta/models listing: the
+        # generally-available "gemini-3-flash" name does not exist there, only
+        # the preview identifier does. The same rot the Groq registry guards
+        # against, caught the same way, by checking rather than assuming.
+        ModelSpec(Provider.GOOGLE, "gemini-3-flash-preview", "json_schema", 0.30, 2.50, 1_048_576),
         ModelSpec(Provider.GOOGLE, "gemini-2.5-flash-lite", "json_schema", 0.10, 0.40, 1_048_576),
         ModelSpec(Provider.OPENAI, "gpt-5.5-mini", "json_schema", 0.25, 2.00, 400_000),
         ModelSpec(Provider.OPENAI, "gpt-5.5", "json_schema", 1.25, 10.00, 400_000),
@@ -119,7 +124,7 @@ TIER_CHAINS: dict[Tier, list[str]] = {
     ],
     Tier.REASON: [
         "groq:openai/gpt-oss-120b",
-        "google_genai:gemini-3-flash",
+        "google_genai:gemini-3-flash-preview",
         "openai:gpt-5.5-mini",
         # Same provider, smaller model, as a last resort. Groq's token-per-minute
         # limits are per model, so stepping down within Groq genuinely relieves
@@ -129,12 +134,12 @@ TIER_CHAINS: dict[Tier, list[str]] = {
         "groq:openai/gpt-oss-20b",
     ],
     Tier.SKEPTIC: [
-        "google_genai:gemini-3-flash",
+        "google_genai:gemini-3-flash-preview",
         "openai:gpt-5.5-mini",
         "groq:qwen/qwen3.8-27b",
         "groq:openai/gpt-oss-120b",
     ],
-    Tier.JUDGE: ["openai:gpt-5.5", "google_genai:gemini-3-flash"],
+    Tier.JUDGE: ["openai:gpt-5.5", "google_genai:gemini-3-flash-preview"],
     Tier.GUARD: ["groq:meta-llama/llama-prompt-guard-2-86m"],
 }
 
@@ -151,8 +156,18 @@ class NoModelAvailableError(RuntimeError):
 class ModelRouter:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._groq_keys = [
+            key for key in (settings.groq_api_key, settings.groq_api_key_2) if key is not None
+        ]
+        # A fresh ModelSpec is resolved to actual credentials once per agent
+        # call (see build_spec), so a simple round-robin here lands on
+        # consecutive calls rather than needing to be threaded through
+        # anything else. `itertools.count` rather than `% len` at each call so
+        # the counter itself never needs guarding when the key list is empty.
+        self._groq_key_rotor = itertools.count()
+
         self._available = {
-            Provider.GROQ: settings.groq_api_key is not None,
+            Provider.GROQ: bool(self._groq_keys),
             Provider.GOOGLE: settings.google_api_key is not None,
             Provider.OPENAI: settings.openai_api_key is not None,
         }
@@ -215,8 +230,17 @@ class ModelRouter:
         return self.build_spec(spec, temperature=temperature, **kwargs)
 
     def _api_key(self, provider: Provider) -> str:
+        if provider is Provider.GROQ:
+            if not self._groq_keys:
+                raise NoModelAvailableError("No API key configured for groq.")
+            # Round-robin. Confirmed independently rate-limited (separate
+            # x-ratelimit-remaining counts and, critically, separate daily
+            # caps), so alternating calls genuinely doubles throughput rather
+            # than nominally splitting one shared ceiling.
+            key = self._groq_keys[next(self._groq_key_rotor) % len(self._groq_keys)]
+            return key.get_secret_value()
+
         secret = {
-            Provider.GROQ: self._settings.groq_api_key,
             Provider.GOOGLE: self._settings.google_api_key,
             Provider.OPENAI: self._settings.openai_api_key,
         }[provider]
