@@ -70,7 +70,9 @@ export function MeetingDetailView({ meetingId }: { meetingId: string }) {
           <TabsTrigger value="rejected">
             Rejected ({data.rejections.length})
           </TabsTrigger>
-          <TabsTrigger value="recap">Recap</TabsTrigger>
+          <TabsTrigger value="recap">
+            Follow-ups ({data.communications.length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="commitments" className="mt-4">
@@ -111,9 +113,7 @@ function CommitmentsTab({
         <li key={row.id} className="border-rule border-b py-3 last:border-b-0">
           <div className="flex items-baseline justify-between gap-4">
             <span className="text-[0.8125rem]">{row.text}</span>
-            <span
-              className={cn("t-data shrink-0", BAND[row.risk_band])}
-            >
+            <span className={cn("t-data shrink-0", BAND[row.risk_band])}>
               risk {row.risk_score.toFixed(2)}
             </span>
           </div>
@@ -134,7 +134,11 @@ function CommitmentsTab({
   );
 }
 
-function DecisionsTab({ decisions }: { decisions: MeetingDetailData["decisions"] }) {
+function DecisionsTab({
+  decisions,
+}: {
+  decisions: MeetingDetailData["decisions"];
+}) {
   if (decisions.length === 0) {
     return <Empty>No decisions were settled in this meeting.</Empty>;
   }
@@ -145,11 +149,14 @@ function DecisionsTab({ decisions }: { decisions: MeetingDetailData["decisions"]
         <li key={row.id} className="border-rule border-b py-3 last:border-b-0">
           <p className="text-[0.8125rem]">{row.statement}</p>
           {row.rationale && (
-            <p className="text-paper-dim mt-1 text-[0.8125rem]">{row.rationale}</p>
+            <p className="text-paper-dim mt-1 text-[0.8125rem]">
+              {row.rationale}
+            </p>
           )}
           {row.alternatives_considered.length > 0 && (
             <p className="text-paper-muted mt-1 text-[0.75rem]">
-              Considered and not chosen: {row.alternatives_considered.join(", ")}
+              Considered and not chosen:{" "}
+              {row.alternatives_considered.join(", ")}
             </p>
           )}
           {row.evidence[0] && (
@@ -187,12 +194,16 @@ function DecisionsTab({ decisions }: { decisions: MeetingDetailData["decisions"]
  * adversarial review is real rather than decorative: a reviewer can check
  * each reason against the transcript in ten seconds.
  */
-function RejectedTab({ rejections }: { rejections: MeetingDetailData["rejections"] }) {
+function RejectedTab({
+  rejections,
+}: {
+  rejections: MeetingDetailData["rejections"];
+}) {
   if (rejections.length === 0) {
     return (
       <Empty>
-        Nothing was rejected. Either the meeting was clean, or the Skeptic
-        found no reason to doubt what the Analyst extracted.
+        Nothing was rejected. Either the meeting was clean, or the Skeptic found
+        no reason to doubt what the Analyst extracted.
       </Empty>
     );
   }
@@ -205,7 +216,9 @@ function RejectedTab({ rejections }: { rejections: MeetingDetailData["rejections
             <span className="text-debt t-eyebrow">{row.rejected_by}</span>
             <span className="text-paper-muted t-data">at {row.stage}</span>
           </div>
-          <p className="mt-1 text-[0.8125rem] line-through opacity-70">{row.text}</p>
+          <p className="mt-1 text-[0.8125rem] line-through opacity-70">
+            {row.text}
+          </p>
           <p className="text-paper-dim mt-1 text-[0.8125rem]">{row.reason}</p>
         </li>
       ))}
@@ -213,32 +226,51 @@ function RejectedTab({ rejections }: { rejections: MeetingDetailData["rejections
   );
 }
 
+const KIND_LABEL: Record<string, string> = {
+  recap_email: "Recap to everyone",
+  owner_nudge: "Nudge, written by the nightly sweep",
+  digest: "Digest",
+};
+
+/**
+ * The recap written when the meeting was processed, plus any nudges the
+ * nightly sweep has written since, because a deadline passed and nobody
+ * convened to notice. Everything here is a draft: nothing in this system
+ * sends anything on anyone's behalf.
+ */
 function RecapTab({
   communications,
 }: {
   communications: MeetingDetailData["communications"];
 }) {
-  const recap = communications.find((item) => item.kind === "recap_email");
-
-  if (!recap) {
+  if (communications.length === 0) {
     return (
       <Empty>
-        No recap was drafted. This meeting may have produced nothing worth
+        Nothing has been drafted. This meeting may have produced nothing worth
         summarising, or the Herald could not run.
       </Empty>
     );
   }
 
   return (
-    <div className="border-rule border p-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="t-heading text-[0.9375rem]">{recap.subject ?? "Recap"}</p>
-        <span className="t-data text-paper-muted">draft, not sent</span>
-      </div>
-      <p className="text-paper-dim mt-3 whitespace-pre-wrap text-[0.8125rem] leading-relaxed">
-        {recap.body}
-      </p>
-    </div>
+    <ul className="space-y-3">
+      {communications.map((item) => (
+        <li key={item.id} className="border-rule border p-4">
+          <div className="flex items-baseline justify-between gap-4">
+            <p className="t-heading text-[0.9375rem]">
+              {item.subject ?? KIND_LABEL[item.kind] ?? item.kind}
+            </p>
+            <span className="t-data text-paper-muted shrink-0">
+              {item.status === "sent" ? "sent" : "draft, not sent"}
+            </span>
+          </div>
+          <p className="t-eyebrow mt-1">{KIND_LABEL[item.kind] ?? item.kind}</p>
+          <p className="text-paper-dim mt-3 text-[0.8125rem] leading-relaxed whitespace-pre-wrap">
+            {item.body}
+          </p>
+        </li>
+      ))}
+    </ul>
   );
 }
 
