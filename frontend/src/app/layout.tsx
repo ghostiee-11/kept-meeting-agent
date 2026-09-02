@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { Shell } from "@/components/shell";
 
 // One variable font carrying two roles. Body sits at the normal width; display
 // is the same file stretched via the `wdth` axis (see `.t-display` in
 // globals.css), which keeps the page cohesive and costs one font download
-// instead of two.
+// instead of two. Deliberately not Geist: a distinctive interface should not
+// open in the same typeface as every other Next.js project.
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
@@ -32,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${archivo.variable} ${plexMono.variable}`}>
-        {children}
+        <Shell>{children}</Shell>
       </body>
     </html>
   );

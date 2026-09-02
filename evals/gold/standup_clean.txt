@@ -1,0 +1,9 @@
+Meera: Quick standup. Adit, where's the rate limiter?
+Adit: Merged yesterday. I'll write up the runbook by end of week.
+Priya: I'm blocked on the staging credentials, Rahul has them.
+Rahul: Sorry, I'll send those over today.
+Meera: Sana, anything from customers?
+Sana: Two escalations about the export timeout. I'll pull the numbers together for Thursday.
+Meera: Good. We're keeping the Friday release date rather than slipping to Monday.
+Tom: Someone should probably refresh the onboarding screenshots at some point.
+Meera: Noted, not urgent.

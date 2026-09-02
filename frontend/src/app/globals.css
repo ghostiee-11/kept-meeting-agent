@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /*
   Kept design tokens.
@@ -11,6 +13,10 @@
 
   Two accents, not one, because double-entry needs both: `debt` marks anything
   slipping and `kept` marks anything settled. Neither is ever decorative.
+
+  shadcn's semantic names are aliased onto these rather than given values of
+  their own, so a Dialog or a Table inherits the ledger palette instead of
+  arriving in default shadcn grey. There is one palette here, not two.
 */
 
 :root {
@@ -34,6 +40,10 @@
 
   /* Greenbar ruling: the faint alternating band of accounting paper. */
   --band: rgba(110, 154, 120, 0.035);
+
+  /* Near-square. shadcn's default 0.625rem is most of why every shadcn app
+     looks like the same app; a ledger cell has corners. */
+  --radius: 2px;
 }
 
 /*
@@ -45,7 +55,7 @@
   :root:not([data-theme="dark"]) {
     --ground: #f7f5ef;
     --surface: #ffffff;
-    --surface-raised: #fbfaf6;
+    --surface-raised: #f2efe6;
     --rule: #dedad0;
     --rule-strong: #c3beb2;
 
@@ -68,7 +78,7 @@
 :root[data-theme="light"] {
   --ground: #f7f5ef;
   --surface: #ffffff;
-  --surface-raised: #fbfaf6;
+  --surface-raised: #f2efe6;
   --rule: #dedad0;
   --rule-strong: #c3beb2;
 
@@ -85,6 +95,39 @@
   --focus: #2f6b91;
 
   --band: rgba(63, 107, 74, 0.045);
+}
+
+/* shadcn's vocabulary, pointed at the palette above. */
+:root,
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  --background: var(--ground);
+  --foreground: var(--paper);
+  --card: var(--surface);
+  --card-foreground: var(--paper);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--paper);
+  --primary: var(--paper);
+  --primary-foreground: var(--ground);
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--paper);
+  --muted: var(--surface-raised);
+  --muted-foreground: var(--paper-muted);
+  --accent: var(--surface-raised);
+  --accent-foreground: var(--paper);
+  --destructive: var(--debt);
+  --destructive-foreground: var(--paper);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--focus);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--paper);
+  --sidebar-primary: var(--paper);
+  --sidebar-primary-foreground: var(--ground);
+  --sidebar-accent: var(--surface-raised);
+  --sidebar-accent-foreground: var(--paper);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--focus);
 }
 
 @theme inline {
@@ -106,7 +149,40 @@
   --color-band: var(--band);
 
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 2);
 }
 
 html {

@@ -1,0 +1,10 @@
+Meera: Following up from last week. Priya, the migration plan?
+Priya: Still not done. Staging was down again Monday and Tuesday. I'll have it by Thursday.
+Meera: That's the second time it's moved. Rahul, the EU region?
+Rahul: Legal came back clean, so I shipped it Monday as planned.
+Meera: Good. Adit, the runbook?
+Adit: Done, it's in the wiki.
+Meera: And the vendor call with Vanta?
+Priya: Haven't got to it.
+Meera: OK. Tom, I'm going to need the design review this week, we can't keep pushing it.
+Tom: I'll do it Wednesday.

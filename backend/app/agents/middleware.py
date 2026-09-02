@@ -20,13 +20,11 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import HumanMessage
-from langgraph.config import get_stream_writer
 
 from app.agents.contracts import Evidence, Grounded
 from app.logging import get_logger
@@ -35,16 +33,6 @@ from app.services.model_router import ModelRouter
 from app.services.verifier import verify_evidence
 
 log = get_logger(__name__)
-
-
-def _emit(event: dict[str, Any]) -> None:
-    """Push a live event to the console, if one is listening.
-
-    `get_stream_writer` raises outside a graph run, which is exactly what
-    happens in unit tests and the CLI, so a failure here is not interesting.
-    """
-    with suppress(Exception):
-        get_stream_writer()(event)
 
 
 class CostMeterMiddleware(AgentMiddleware[Any, Any]):
@@ -61,7 +49,7 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
         started = time.perf_counter()
-        _emit({"type": "model_call_started", "agent": self.agent})
+        trace.record(self.agent, "model_call_started")
 
         try:
             response = await handler(request)
@@ -72,7 +60,6 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
                 latency_ms=int((time.perf_counter() - started) * 1000),
                 payload={"error": str(exc)[:500]},
             )
-            _emit({"type": "error", "agent": self.agent, "error": str(exc)[:200]})
             raise
 
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -84,7 +71,7 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
         identifier = _identifier_of(request, model_name)
         spec = self._router.spec_for(identifier)
 
-        entry = trace.record(
+        trace.record(
             self.agent,
             "model_call",
             provider=spec.provider.value,
@@ -94,8 +81,6 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
             latency_ms=latency_ms,
             cost_usd=spec.cost(tokens_in, tokens_out),
         )
-        if entry is not None:
-            _emit({"type": "model_call", **entry.as_event()})
         return response
 
 
@@ -135,7 +120,6 @@ class GroundingMiddleware(AgentMiddleware[Any, Any]):
             "grounding_retry",
             payload={"quotes": ungrounded[:5], "count": len(ungrounded)},
         )
-        _emit({"type": "grounding_retry", "agent": self.agent, "count": len(ungrounded)})
 
         quoted = "\n".join(f"  - {quote!r}" for quote in ungrounded[:10])
         correction = HumanMessage(

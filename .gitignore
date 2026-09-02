@@ -1,36 +1,32 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-.coverage
-htmlcov/
-
-# Node
-node_modules/
-.next/
-out/
-.turbo/
-*.tsbuildinfo
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Editors
-.vscode/
-.idea/
-.DS_Store
 
 # Assignment brief (kept locally, mirrored in docs/)
-Screenshot*.png
-
+# Editors
+# Environment
 # Eval scratch output (committed results live in evals/results/)
-evals/.cache/
-.playwright-mcp/
+# Node
+# Python
+*.egg-info/
+*.py[cod]
+*.tsbuildinfo
+.DS_Store
+.coverage
+.env
+.env.*.local
+.env.local
+.idea/
+.mypy_cache/
 .neon
+.next/
+.playwright-mcp/
+.pytest_cache/
+.ruff_cache/
+.turbo/
+.venv/
+.vscode/
+Screenshot*.png
+__pycache__/
+evals/.cache/
+htmlcov/
+node_modules/
+out/
+venv/

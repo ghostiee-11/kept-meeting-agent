@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_URL, apiFetch, type Health } from "@/lib/api";
+import { apiFetch, type Health } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type State =
   | { phase: "connecting" }
@@ -9,16 +15,22 @@ type State =
   | { phase: "ready"; health: Health }
   | { phase: "unreachable"; reason: string };
 
-/** Render free spins down after 15 minutes idle. Past this, say so out loud. */
+/** Render's free instance sleeps after 15 minutes. Past this, say so out loud. */
 const COLD_START_HINT_MS = 3_000;
 
-export function SystemStatus() {
+const TONE = {
+  ok: "bg-kept",
+  degraded: "bg-pending",
+  down: "bg-debt",
+} as const;
+
+export function SystemStatus({ compact = false }: { compact?: boolean }) {
   const [state, setState] = useState<State>({ phase: "connecting" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    const coldStartTimer = setTimeout(() => {
+    const coldStart = setTimeout(() => {
       if (!cancelled) setState({ phase: "waking" });
     }, COLD_START_HINT_MS);
 
@@ -26,56 +38,58 @@ export function SystemStatus() {
       .then((health) => {
         if (!cancelled) setState({ phase: "ready", health });
       })
-      .catch((error: unknown) => {
+      .catch((cause: unknown) => {
         if (!cancelled) {
           setState({
             phase: "unreachable",
-            reason: error instanceof Error ? error.message : "Unknown error",
+            reason: cause instanceof Error ? cause.message : "Unknown error",
           });
         }
       })
-      .finally(() => clearTimeout(coldStartTimer));
+      .finally(() => clearTimeout(coldStart));
 
     return () => {
       cancelled = true;
-      clearTimeout(coldStartTimer);
+      clearTimeout(coldStart);
     };
   }, [attempt]);
 
-  if (state.phase === "unreachable") {
+  if (state.phase === "connecting") {
+    return <Skeleton className="h-4 w-40" />;
+  }
+
+  if (state.phase === "waking") {
     return (
-      <div className="border-rule bg-surface border">
-        <Bar tone="debt" label="Unreachable" detail={API_URL} />
-        <div className="flex items-center justify-between gap-4 px-4 py-3">
-          <p className="t-data text-paper-muted truncate">{state.reason}</p>
-          <button
-            onClick={() => {
-              setState({ phase: "connecting" });
-              setAttempt((n) => n + 1);
-            }}
-            className="border-rule-strong text-paper hover:bg-surface-raised shrink-0 border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="t-data text-paper-muted flex items-center gap-2">
+            <span className="bg-pending size-1.5 animate-pulse rounded-full" />
+            waking the backend
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          The API runs on a free instance that sleeps after 15 minutes idle. The
+          first request wakes it, which takes up to a minute.
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
-  if (state.phase !== "ready") {
+  if (state.phase === "unreachable") {
     return (
-      <div className="border-rule bg-surface border">
-        <Bar
-          tone="idle"
-          label={state.phase === "waking" ? "Waking" : "Connecting"}
-          detail={state.phase === "waking" ? "free instance, up to 60s" : ""}
-        />
-        <Grid>
-          {["Env", "Build", "Models", "Search", "Database", "Auth"].map((k) => (
-            <Cell key={k} label={k} value="—" />
-          ))}
-        </Grid>
-      </div>
+      <span className="t-data flex items-center gap-2">
+        <span className={`${TONE.down} size-1.5 rounded-full`} />
+        <span className="text-debt">API unreachable</span>
+        <button
+          onClick={() => {
+            setState({ phase: "connecting" });
+            setAttempt((n) => n + 1);
+          }}
+          className="text-paper-muted hover:text-paper underline underline-offset-2"
+        >
+          retry
+        </button>
+      </span>
     );
   }
 
@@ -84,84 +98,32 @@ export function SystemStatus() {
     .filter(([, on]) => on)
     .map(([name]) => name);
 
-  return (
-    <div className="border-rule bg-surface border">
-      <Bar
-        tone={health.status === "ok" ? "kept" : "pending"}
-        label={health.status === "ok" ? "Operational" : "Degraded"}
-        detail={`${Math.round(health.uptime_seconds)}s uptime`}
-      />
-      <Grid>
-        <Cell label="Env" value={health.environment} />
-        <Cell label="Build" value={health.version} />
-        <Cell
-          label="Models"
-          value={models.length ? models.join(" · ") : "none"}
-          tone={models.length ? undefined : "debt"}
-        />
-        <Cell
-          label="Search"
-          value={health.web_search ? "tavily" : "fallback"}
-        />
-        <Cell label="Database" value={health.database ? "neon" : "none"} />
-        <Cell label="Auth" value={health.auth_enforced ? "keyed" : "open"} />
-      </Grid>
-    </div>
-  );
-}
+  const summary = compact
+    ? `${models.join(" · ") || "no models"}${health.web_search ? " · search" : ""}`
+    : health.environment;
 
-const TONE = {
-  kept: "bg-kept",
-  debt: "bg-debt",
-  pending: "bg-pending",
-  idle: "bg-paper-muted animate-pulse",
-} as const;
-
-function Bar({
-  tone,
-  label,
-  detail,
-}: {
-  tone: keyof typeof TONE;
-  label: string;
-  detail?: string;
-}) {
   return (
-    <div className="border-rule flex items-center gap-2.5 border-b px-4 py-3">
-      <span className={`size-1.5 rounded-full ${TONE[tone]}`} />
-      <span className="t-heading text-[0.9375rem]">{label}</span>
-      {detail && (
-        <span className="t-data text-paper-muted ml-auto">{detail}</span>
-      )}
-    </div>
-  );
-}
-
-function Grid({ children }: { children: React.ReactNode }) {
-  return (
-    <dl className="border-rule grid grid-cols-2 gap-px border-t sm:grid-cols-3">
-      {children}
-    </dl>
-  );
-}
-
-function Cell({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "debt";
-}) {
-  return (
-    <div className="bg-surface outline-rule px-4 py-3 outline outline-offset-0">
-      <dt className="t-eyebrow">{label}</dt>
-      <dd
-        className={`t-data mt-1 truncate ${tone === "debt" ? "text-debt" : "text-paper"}`}
-      >
-        {value}
-      </dd>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="t-data text-paper-muted flex items-center gap-2">
+          <span
+            className={`${TONE[health.status === "ok" ? "ok" : "degraded"]} size-1.5 rounded-full`}
+          />
+          {summary}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <span className="block">
+          {health.environment} · build {health.version} ·{" "}
+          {health.database ? "database up" : "no database"} ·{" "}
+          {health.auth_enforced ? "keyed" : "open"}
+        </span>
+        {health.notes.map((note) => (
+          <span key={note} className="text-pending mt-1 block">
+            {note}
+          </span>
+        ))}
+      </TooltipContent>
+    </Tooltip>
   );
 }

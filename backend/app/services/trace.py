@@ -13,8 +13,8 @@ only carry domain artifacts.
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from itertools import count
@@ -55,16 +55,29 @@ class TraceEntry:
 
 
 class RunTrace:
-    """Accumulates one run's activity."""
+    """Accumulates one run's activity, and optionally forwards it live.
 
-    def __init__(self, run_id: str) -> None:
+    The listener is how the console gets its events. LangGraph's stream writer
+    was the obvious route and does not work here: each agent is invoked as its
+    own compiled graph, so `get_stream_writer` inside one resolves to that
+    graph's run rather than the parent's, and the events go nowhere. The trace
+    is already threaded through every agent by a context variable, so it is the
+    honest place to tap.
+    """
+
+    def __init__(self, run_id: str, listener: Callable[[TraceEntry], None] | None = None) -> None:
         self.run_id = run_id
         self.entries: list[TraceEntry] = []
         self._sequence = count()
+        self._listener = listener
 
     def record(self, agent: str, event: str, **fields: Any) -> TraceEntry:
         entry = TraceEntry(seq=next(self._sequence), agent=agent, event=event, **fields)
         self.entries.append(entry)
+        if self._listener is not None:
+            # Never let a failing consumer take down a run.
+            with suppress(Exception):
+                self._listener(entry)
         return entry
 
     @property
@@ -102,8 +115,10 @@ def current_trace() -> RunTrace | None:
 
 
 @contextmanager
-def run_trace(run_id: str) -> Iterator[RunTrace]:
-    trace = RunTrace(run_id)
+def run_trace(
+    run_id: str, listener: Callable[[TraceEntry], None] | None = None
+) -> Iterator[RunTrace]:
+    trace = RunTrace(run_id, listener)
     token = _CURRENT.set(trace)
     try:
         yield trace

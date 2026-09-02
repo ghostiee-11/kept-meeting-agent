@@ -153,9 +153,14 @@ async def _stream_run(
     router_ = ModelRouter(settings)
     events: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
+    def forward(entry: trace.TraceEntry) -> None:
+        """Push each trace entry to the browser as it is recorded."""
+        events.put_nowait({"type": entry.event, **entry.as_event()})
+
     yield _sse(
         "run_started",
         {
+            "type": "run_started",
             "run_id": str(run_id),
             "meeting_id": str(meeting_id),
             "turns": len(turns),
@@ -206,7 +211,7 @@ async def _stream_run(
                             await events.put({"type": "team_report", "node": node, "line": line})
             return cast(MeetingState, final)
 
-    with trace.run_trace(str(run_id)) as recorder:
+    with trace.run_trace(str(run_id), forward) as recorder:
         task = asyncio.create_task(drive())
         task.add_done_callback(lambda _: events.put_nowait(None))
 
@@ -221,7 +226,7 @@ async def _stream_run(
         except Exception as exc:
             log.exception("run.failed", run_id=str(run_id))
             await _mark_failed(factory, run_id, str(exc)[:500])
-            yield _sse("run_failed", {"error": str(exc)[:300]})
+            yield _sse("run_failed", {"type": "run_failed", "error": str(exc)[:300]})
             return
 
     async with factory() as session:
@@ -236,6 +241,7 @@ async def _stream_run(
     yield _sse(
         "run_finished",
         {
+            "type": "run_finished",
             "run_id": str(run_id),
             "summary": state.get("final_summary", ""),
             "counts": counts,
