@@ -84,7 +84,10 @@ export function AgentWaterfall({
           <p className="t-eyebrow mb-1.5">{team}</p>
           {members.map((agent) => {
             const own = bars.filter((bar) => bar.agent === agent);
-            const cost = own.reduce((total, bar) => total + bar.costUsd, 0);
+            const elapsed = own.reduce(
+              (total, bar) => total + bar.durationMs,
+              0,
+            );
 
             return (
               <div key={agent} className="flex items-center gap-3 py-1">
@@ -102,7 +105,7 @@ export function AgentWaterfall({
                   {own.map((bar, index) => (
                     <span
                       key={index}
-                      title={`${bar.model ?? "?"} · ${bar.durationMs}ms · $${bar.costUsd.toFixed(5)}`}
+                      title={`${bar.model ?? "?"} · ${bar.durationMs}ms`}
                       className={`absolute top-0 h-full ${
                         bar.failed ? "bg-debt" : "bg-kept"
                       } opacity-80`}
@@ -115,7 +118,9 @@ export function AgentWaterfall({
                 </div>
 
                 <span className="t-data text-paper-muted w-24 shrink-0 text-right">
-                  {own.length > 0 ? `$${cost.toFixed(4)}` : "no model call"}
+                  {own.length > 0
+                    ? `${(elapsed / 1000).toFixed(1)}s`
+                    : "no model call"}
                 </span>
               </div>
             );

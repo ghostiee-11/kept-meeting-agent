@@ -1,0 +1,10 @@
+{
+  "title": "Retro with no commitments",
+  "why": "The false-positive test. A summarizer asked for action items will invent some, because the prompt implies they exist. The correct answer is zero.",
+  "transcript": "Meera: Quick retro. What went well?\nAdit: The release was smooth. No rollbacks.\nPriya: Agreed, staging held up this time.\nTom: The design handoff felt better than last sprint.\nMeera: What didn't?\nSana: Support volume spiked on Wednesday and we didn't know why until Thursday.\nRahul: Latency has been rough this month generally.\nAdit: Yeah, it's been noticeable.\nMeera: Fair. Anything else?\nTom: Not from me.\nMeera: Good, that's it.\n",
+  "expected": {
+    "commitments": [],
+    "decisions": [],
+    "notes": "Every line is observation or opinion. Nobody accepts anything, nothing is assigned, no fork is closed."
+  }
+}

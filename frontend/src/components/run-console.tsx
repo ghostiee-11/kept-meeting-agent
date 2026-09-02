@@ -171,8 +171,6 @@ export function RunConsole() {
     }
   }
 
-  const cost = bars.reduce((total, bar) => total + bar.costUsd, 0);
-
   return (
     <div className="grid min-h-[calc(100dvh-4.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <section className="border-rule flex flex-col border-b lg:border-r lg:border-b-0">
@@ -247,7 +245,7 @@ export function RunConsole() {
           <p className="t-eyebrow">The team</p>
           <span className="t-data text-paper-muted">
             {running || bars.length > 0
-              ? `${(elapsed / 1000).toFixed(1)}s · $${cost.toFixed(4)}`
+              ? `${(elapsed / 1000).toFixed(1)}s · ${bars.length} model calls`
               : ""}
           </span>
         </div>
@@ -312,8 +310,7 @@ function Outcome({ finished }: { finished: Finished }) {
             <Link href="/execution">See who owes what</Link>
           </Button>
           <span className="t-data text-paper-muted">
-            ${finished.costUsd.toFixed(5)} · {finished.tokens.in}/
-            {finished.tokens.out} tokens
+            {finished.tokens.in}/{finished.tokens.out} tokens
           </span>
         </div>
       </div>

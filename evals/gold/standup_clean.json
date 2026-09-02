@@ -1,0 +1,38 @@
+{
+  "title": "Monday standup",
+  "why": "The clean case. Everything should resolve with no escalation, which is the baseline the hard cases are measured against.",
+  "transcript_file": "standup_clean.txt",
+  "expected": {
+    "commitments": [
+      {
+        "gist": "runbook",
+        "owner": "Adit Sharma",
+        "due": "end of week",
+        "class": "commitment"
+      },
+      {
+        "gist": "staging credentials",
+        "owner": "Rahul Menon",
+        "due": "today",
+        "class": "commitment"
+      },
+      {
+        "gist": "export timeout numbers",
+        "owner": "Sana Qureshi",
+        "due": "Thursday",
+        "class": "commitment"
+      }
+    ],
+    "must_not_extract": [
+      {
+        "gist": "onboarding screenshots",
+        "why": "suggestion, Meera says not urgent"
+      }
+    ],
+    "decisions": [
+      {
+        "gist": "keep the Friday release date rather than slipping to Monday"
+      }
+    ]
+  }
+}

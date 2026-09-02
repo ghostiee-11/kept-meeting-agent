@@ -1,0 +1,73 @@
+{
+  "title": "Sprint planning (hard cases)",
+  "why": "Seven classification traps in one transcript: negated, conditional, hypothetical, third-party, rhetorical, restated, and retracted.",
+  "transcript_file": "hard_cases.txt",
+  "expected": {
+    "commitments": [
+      {
+        "gist": "migration plan",
+        "owner": "Priya Nair",
+        "due": "Tuesday",
+        "class": "commitment",
+        "note": "The Friday version is retracted at turn 15. Only the Tuesday one should survive."
+      },
+      {
+        "gist": "ship the EU region",
+        "owner": "Rahul Menon",
+        "due": "Monday",
+        "class": "commitment",
+        "conditional_on": "legal sign-off on data residency"
+      },
+      {
+        "gist": "vendor call with Vanta",
+        "owner": "Priya Nair",
+        "due": null,
+        "class": "action_item",
+        "note": "Assigned by Meera, accepted by Priya."
+      },
+      {
+        "gist": "update the architecture doc",
+        "owner": null,
+        "due": null,
+        "class": "action_item",
+        "note": "Rahul says 'we'll get that sorted'. Real obligation, no individual owner. Must abstain."
+      }
+    ],
+    "must_not_extract": [
+      {
+        "gist": "caching layer",
+        "why": "suggestion, nobody picked it up"
+      },
+      {
+        "gist": "design review",
+        "why": "negated, Tom says he cannot get to it"
+      },
+      {
+        "gist": "tell the client Q3",
+        "why": "hypothetical, and refused"
+      },
+      {
+        "gist": "marketing launch copy",
+        "why": "third party, nobody in the room committed"
+      },
+      {
+        "gist": "redo the onboarding flow",
+        "why": "rhetorical question, deferred"
+      }
+    ],
+    "decisions": [
+      {
+        "gist": "Postgres over Mongo",
+        "alternatives": [
+          "Mongo"
+        ]
+      },
+      {
+        "gist": "not telling the client Q3"
+      },
+      {
+        "gist": "onboarding flow decision deferred to next week"
+      }
+    ]
+  }
+}

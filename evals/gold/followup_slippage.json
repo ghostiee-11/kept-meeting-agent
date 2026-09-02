@@ -1,0 +1,34 @@
+{
+  "title": "Follow-up planning",
+  "why": "Run after hard_cases. Tests cross-meeting reconciliation: one commitment slips a second time, one completes, one goes unmentioned.",
+  "transcript_file": "followup_slippage.txt",
+  "runs_after": "hard_cases.txt",
+  "expected": {
+    "slippage": [
+      {
+        "gist": "migration plan",
+        "outcome": "recommitted",
+        "note": "Second slip. Friday, then Tuesday, now Thursday."
+      },
+      {
+        "gist": "ship the EU region",
+        "outcome": "completed",
+        "note": "Legal cleared, Rahul shipped it."
+      },
+      {
+        "gist": "runbook",
+        "outcome": "completed"
+      },
+      {
+        "gist": "vendor call with Vanta",
+        "outcome": "unmentioned_or_blocked",
+        "note": "Priya says she has not got to it."
+      },
+      {
+        "gist": "design review",
+        "outcome": "newly_committed",
+        "note": "Tom now commits to Wednesday."
+      }
+    ]
+  }
+}

@@ -23,8 +23,8 @@ interface RunSummary {
  * The trust panel.
  *
  * Everything here exists so a claim in the README can be checked rather than
- * believed: which agents ran, which model actually answered each call, what it
- * cost, and whether the tasks really landed in a tracker.
+ * believed: which agents ran, which model actually answered each call, how long
+ * it took, and whether the tasks really landed in a tracker.
  */
 export function OpsView() {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -118,7 +118,7 @@ export function OpsView() {
               {item.meeting_title}
             </span>
             <span className="t-data text-paper-muted shrink-0">
-              {item.agents} agents · ${item.cost_usd.toFixed(4)}
+              {item.agents} agents · {item.tokens_in + item.tokens_out} tokens
             </span>
             <span
               className={cn(
@@ -182,7 +182,6 @@ export function OpsView() {
                   <Th>Model</Th>
                   <Th className="text-right">Tokens</Th>
                   <Th className="text-right">ms</Th>
-                  <Th className="text-right">Cost</Th>
                 </tr>
               </thead>
               <tbody>
@@ -215,11 +214,8 @@ export function OpsView() {
                         ? `${entry.tokens_in}/${entry.tokens_out}`
                         : "—"}
                     </td>
-                    <td className="t-data text-paper-dim px-2 py-1.5 text-right">
+                    <td className="t-data text-paper-dim py-1.5 pr-6 text-right">
                       {entry.latency_ms || "—"}
-                    </td>
-                    <td className="t-data text-paper-muted py-1.5 pr-6 text-right">
-                      {entry.cost_usd ? entry.cost_usd.toFixed(5) : "—"}
                     </td>
                   </tr>
                 ))}
