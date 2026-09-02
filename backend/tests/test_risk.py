@@ -56,11 +56,25 @@ def test_overdue_risk_grows_with_the_delay_then_saturates() -> None:
     in trouble, and an unbounded score would drown out every other factor."""
     scores = [
         score_commitment(**healthy(due_date=TODAY - timedelta(days=days))).score  # type: ignore[arg-type]
-        for days in (1, 7, 14, 40)
+        for days in (1, 4, 7, 40)
     ]
 
     assert scores[0] < scores[1] < scores[2]
-    assert scores[2] == scores[3]
+    assert scores[2] == scores[3], "a week late and six weeks late are both simply late"
+
+
+def test_work_that_is_failing_outranks_work_that_is_merely_unclear() -> None:
+    """The inversion this weighting exists to prevent. A commitment a week
+    late and moved twice is in real trouble; one that is simply missing an
+    owner is only unclear, and scoring the second higher would send everyone
+    to tidy up metadata while the actual slippage sat below the fold."""
+    failing = score_commitment(
+        **healthy(due_date=TODAY - timedelta(days=7), slip_count=2)  # type: ignore[arg-type]
+    )
+    unclear = score_commitment(**healthy(owner_id=None, due_date=None))  # type: ignore[arg-type]
+
+    assert failing.score > unclear.score
+    assert failing.band != "low", "a week late and twice moved is not low risk"
 
 
 def test_silence_outweighs_being_a_few_days_late() -> None:

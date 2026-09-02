@@ -125,6 +125,13 @@ class Settings(BaseSettings):
 
     # ---- Internal jobs -----------------------------------------------------
     internal_job_token: SecretStr | None = None
+    """Shared secret for the nightly sweep. Unset closes the endpoint."""
+
+    default_timezone: str = "Asia/Kolkata"
+    """Whose today. Overdue is a question about a calendar, and a workspace in
+    Gurugram is a day ahead of a server in Oregon for several hours every
+    evening. Per-meeting timezones are stored and used where a meeting is in
+    hand; this is the fallback for the views and jobs that span all of them."""
 
     # ---- Optional tracing --------------------------------------------------
     langsmith_api_key: SecretStr | None = None

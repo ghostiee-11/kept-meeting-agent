@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from app.deps import SessionDep
+from app.deps import SessionDep, SettingsDep
 from app.models.base import ClarificationStatus, CommitmentStatus
 from app.models.domain import (
     AgentTraceEntry,
@@ -335,6 +335,7 @@ async def get_meeting(meeting_id: uuid.UUID, session: SessionDep) -> MeetingDeta
 @router.get("/commitments", response_model=list[CommitmentOut])
 async def list_commitments(
     session: SessionDep,
+    settings: SettingsDep,
     view: CommitmentFilter = "all",
     limit: Annotated[int, Query(le=500)] = 200,
 ) -> list[CommitmentOut]:
@@ -354,7 +355,7 @@ async def list_commitments(
 
     commitments = (await session.scalars(query)).all()
     owners = await _owner_names(session)
-    today = today_in("Asia/Kolkata")
+    today = today_in(settings.default_timezone)
 
     out = [
         _to_out(item, owners.get(item.owner_id) if item.owner_id else None, today)

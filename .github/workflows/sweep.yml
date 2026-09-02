@@ -1,0 +1,60 @@
+name: Nightly sweep
+
+# Meetings are bad at noticing that a date passed, because nobody convenes to
+# observe that Tuesday's promise is now four days old. This is the job that
+# does, and it doubles as the keep-warm ping: Render's free tier sleeps after
+# fifteen minutes, so without this a reviewer's first request pays the cold
+# start.
+
+on:
+  schedule:
+    # 03:00 IST, which is 21:30 UTC the previous day. Late enough that the
+    # day's meetings have all been processed.
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report what is late without drafting nudges"
+        type: boolean
+        default: false
+
+jobs:
+  sweep:
+    name: Find what is late
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the sweep
+        env:
+          API_URL: ${{ vars.API_URL }}
+          TOKEN: ${{ secrets.INTERNAL_JOB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          # The free instance may be asleep. Wait for it rather than failing
+          # the run on a cold start, which is not an outage.
+          for attempt in 1 2 3 4 5 6; do
+            if curl -sf --max-time 60 "$API_URL/health" > /dev/null; then
+              break
+            fi
+            echo "Backend not awake yet (attempt $attempt), waiting."
+            sleep 20
+          done
+
+          curl -sf --max-time 300 -X POST \
+            -H "X-Internal-Token: $TOKEN" \
+            "$API_URL/internal/sweep?dry_run=$DRY_RUN" \
+            | tee sweep.json
+
+          python3 - <<'PY'
+          import json
+
+          with open("sweep.json") as handle:
+              report = json.load(handle)
+
+          overdue = report["overdue"]
+          print(f"::notice::{len(overdue)} overdue, {report['nudges_drafted']} nudges drafted")
+          for row in overdue[:20]:
+              owner = row["owner"] or "nobody"
+              print(f"  {row['days_late']}d late | {owner} | {row['text']}")
+          PY

@@ -149,7 +149,11 @@ async def draft_communications(
     router: ModelRouter,
     settings: Settings,
 ) -> dict[str, str]:
-    """Draft the recap and a nudge for each owner.
+    """Draft the recap for everyone who was in the meeting.
+
+    Nudges are not written here. Right after a meeting nobody is late yet, and
+    a reminder about work agreed to four minutes ago is noise. They are written
+    by the sweep, once a deadline has actually passed. See `draft_nudge`.
 
     Drafted and stored, never sent. Nothing in this system emails anybody: a
     system that writes on your behalf should have to be told to send.
@@ -192,6 +196,57 @@ async def draft_communications(
 
     trace.record("herald", "artifact", payload={"drafts": len(drafts)})
     return drafts
+
+
+async def draft_nudge(
+    owner: str,
+    lines: list[str],
+    *,
+    router: ModelRouter,
+    settings: Settings,
+) -> str | None:
+    """One message to one person about work of theirs that is now late.
+
+    Each line is already rendered by the caller from the ledger, so the Herald
+    is writing from facts rather than deciding which of them are true. Returns
+    None when the draft fails, which the sweep reports rather than papers over:
+    a nudge nobody wrote is better than a nudge nobody can check.
+    """
+    agent = build_agent(
+        AgentSpec(
+            name="herald",
+            tier=Tier.FAST,
+            purpose="Nudge one owner about their overdue commitments.",
+            system_prompt=prompts.HERALD,
+            response_format=Nudge,
+            redact_pii=True,
+        ),
+        router=router,
+        settings=settings,
+    )
+
+    body = "\n".join(f"  - {line}" for line in lines)
+    try:
+        result = await agent.ainvoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"{owner} is past the date on the following.\n\n{body}\n\n"
+                            "Write the nudge to them."
+                        ),
+                    }
+                ]
+            }
+        )
+    except Exception as exc:
+        log.warning("herald.nudge_failed", owner=owner, error=str(exc)[:200])
+        trace.record("herald", "error", payload={"owner": owner, "error": str(exc)[:200]})
+        return None
+
+    nudge = result.get("structured_response")
+    return nudge.body if nudge else None
 
 
 def _brief(items: list[ResolvedItem], decisions: list[str], questions: list[Question]) -> str:

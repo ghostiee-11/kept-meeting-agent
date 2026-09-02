@@ -8,14 +8,21 @@ It is testable. A weight change shows up as a diff in a test, not as a vibe.
 It is free and instant, so risk can be recomputed on every read rather than
 being cached and going stale.
 
-It is explainable. The UI shows "slipped twice (+0.30), owner inferred rather
-than stated (+0.12), unmentioned for two meetings (+0.20)" instead of an
+It is explainable. The UI shows "unmentioned for two meetings (+0.27), 5 days
+past due (+0.25), owner inferred rather than stated (+0.04)" instead of an
 unsourced number. A person being told their commitment is at risk deserves to
 know why, and an LLM-produced score cannot tell them.
 
 Weights are ordered by how well each factor actually predicts failure. Silence
 is weighted highest: a commitment nobody has mentioned in two meetings is in
 more trouble than one that is three days late and being actively discussed.
+
+Evidence of trouble outranks gaps in what was extracted. Slippage, silence and
+lateness are things that have happened; a missing owner or a soft date are
+things the system does not yet know. An earlier cut had those the other way
+around, which scored a week-late, twice-moved commitment lower than one that
+was merely unowned, and that is precisely backwards: the first is failing and
+the second is only unclear.
 """
 
 from __future__ import annotations
@@ -26,9 +33,9 @@ from datetime import date
 # Contribution ceilings. A commitment can only reach 1.0 by being bad in
 # several ways at once, which is the intent: one missed day is not a crisis.
 WEIGHTS = {
-    "silence": 0.30,
-    "slippage": 0.25,
-    "overdue": 0.25,
+    "silence": 0.40,
+    "overdue": 0.35,
+    "slippage": 0.30,
     "no_owner": 0.20,
     "no_deadline": 0.15,
     "unresolved_question": 0.15,
@@ -40,7 +47,7 @@ WEIGHTS = {
 
 # Beyond this, later days stop adding risk. Something 40 days late is not twice
 # as at risk as something 20 days late; both are in the same trouble.
-_OVERDUE_SATURATION_DAYS = 14
+_OVERDUE_SATURATION_DAYS = 7
 _SLIP_SATURATION = 3
 _SILENCE_SATURATION = 3
 
