@@ -84,6 +84,18 @@ class ModelSpec:
     output_cost_per_mtok: float = 0.0
     context_window: int = 131_072
 
+    max_output_tokens: int = 16_000
+    """Set explicitly because the default is not generous enough, and the way
+    it fails is invisible.
+
+    A long meeting produces a dozen commitments, each carrying its text,
+    classification, reasoning, hints, and a quote. On gpt-oss the reasoning
+    tokens count too. Past the provider's default ceiling the generation is cut
+    off mid-object, and what comes back is not a truncated answer but a 400:
+    "Failed to validate JSON", with an empty `failed_generation` that says
+    nothing about why. Diagnosed by raising this and watching the same model,
+    on the same transcript, return all seven commitments correctly."""
+
     @property
     def identifier(self) -> str:
         return f"{_LANGCHAIN_PROVIDER[self.provider]}:{self.model_id}"
@@ -124,7 +136,11 @@ TIER_CHAINS: dict[Tier, list[str]] = {
     ],
     Tier.REASON: [
         "groq:openai/gpt-oss-120b",
-        "google_genai:gemini-3-flash-preview",
+        # Flash-Lite rather than the newer Flash, which is capped at twenty
+        # requests a day on the free tier. Twenty a day is not a fallback, it
+        # is a demo allowance, and a fallback that is itself exhausted turns a
+        # recoverable 429 into a failed run.
+        "google_genai:gemini-2.5-flash-lite",
         "openai:gpt-5.5-mini",
         # Same provider, smaller model, as a last resort. Groq's token-per-minute
         # limits are per model, so stepping down within Groq genuinely relieves
@@ -134,6 +150,7 @@ TIER_CHAINS: dict[Tier, list[str]] = {
         "groq:openai/gpt-oss-20b",
     ],
     Tier.SKEPTIC: [
+        "google_genai:gemini-2.5-flash-lite",
         "google_genai:gemini-3-flash-preview",
         "openai:gpt-5.5-mini",
         "groq:qwen/qwen3.8-27b",
@@ -261,7 +278,9 @@ class ModelRouter:
             model_provider=_LANGCHAIN_PROVIDER[spec.provider],
             temperature=temperature,
             api_key=self._api_key(spec.provider),
-            **kwargs,
+            # LangChain normalises this to each provider's own name. Caller
+            # overrides win, so a cheap agent can ask for less.
+            **{"max_tokens": spec.max_output_tokens, **kwargs},
         )
         return model
 

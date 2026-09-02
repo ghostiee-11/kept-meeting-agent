@@ -95,6 +95,46 @@ def test_a_second_key_is_optional() -> None:
     assert single.primary(Tier.FAST).provider is Provider.GROQ
 
 
+def test_every_model_is_given_room_to_finish_a_long_extraction() -> None:
+    """The bug this pins was invisible from the error message.
+
+    Without an explicit ceiling, a long meeting's extraction was cut off
+    mid-object by the provider default, and what came back was not a truncated
+    answer but a 400 reading "Failed to validate JSON" with an empty
+    failed_generation. A dozen commitments carrying text, reasoning, hints and
+    a quote each, plus reasoning tokens on gpt-oss, needs several thousand.
+    """
+    configured = router(groq_api_key="k", google_api_key="k", openai_api_key="k")
+
+    for tier in (Tier.FAST, Tier.REASON, Tier.SKEPTIC):
+        for spec in configured.chain(tier):
+            assert spec.max_output_tokens >= 8_000, spec.identifier
+
+
+def test_the_ceiling_reaches_the_provider_client() -> None:
+    """Passing a kwarg the integration silently drops would look identical to
+    passing nothing, which is how the original bug survived."""
+    built = router(groq_api_key="k", google_api_key="k")
+    gemini = next(
+        spec
+        for spec in built.chain(Tier.REASON)
+        if spec.provider is Provider.GOOGLE  # Groq keeps it out of its public fields
+    )
+
+    model = built.build_spec(gemini)
+
+    assert getattr(model, "max_output_tokens", None) == gemini.max_output_tokens
+
+
+def test_a_caller_can_still_ask_for_less() -> None:
+    built = router(groq_api_key="k", google_api_key="k")
+    gemini = next(spec for spec in built.chain(Tier.REASON) if spec.provider is Provider.GOOGLE)
+
+    model = built.build_spec(gemini, max_tokens=256)
+
+    assert getattr(model, "max_output_tokens", None) == 256
+
+
 def test_cost_is_reported_per_million_tokens() -> None:
     spec = router(groq_api_key="k").primary(Tier.REASON)
 
