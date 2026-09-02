@@ -11,8 +11,10 @@ Agent).
 
 | | |
 | --- | --- |
-| Live app | https://kept-meeting-agent.vercel.app |
-| API | *(Render URL, see Deployment)* |
+| Live app | **https://kept-meeting-agent.vercel.app** |
+| API | https://kept-api-3lq6.onrender.com/health |
+| API docs | https://kept-api-3lq6.onrender.com/docs |
+| Demo key | `Mp7kPVabATQGfSbRJP-IpWxQ` (already set in the deployed app; needed only for direct API calls) |
 | Stack | Next.js 15 · FastAPI · LangGraph 1.2 · LangChain 1.3 · Neon Postgres + pgvector |
 | Models | Groq, Gemini, and OpenAI, tiered and with automatic fallback |
 
