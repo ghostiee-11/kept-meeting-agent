@@ -35,6 +35,7 @@ export interface Commitment {
   kind: "commitment" | "action_item";
   status: string;
   owner: string | null;
+  owner_id: string | null;
   owner_confidence: number;
   owner_reason: string | null;
   due_date: string | null;
@@ -78,6 +79,30 @@ export interface CommunicationOut {
   body: string;
   status: string;
   created_at: string;
+}
+
+export interface PersonSummary {
+  id: string;
+  name: string;
+  role: string | null;
+  aliases: string[];
+  open_items: number;
+  overdue: number;
+  at_risk: number;
+}
+
+export interface PersonTask {
+  external_id: string;
+  title: string;
+  status: string;
+  due_date: string | null;
+  url: string;
+}
+
+export interface PersonLedger {
+  person: PersonSummary;
+  commitments: Commitment[];
+  tasks: PersonTask[];
 }
 
 export interface MeetingSummary {

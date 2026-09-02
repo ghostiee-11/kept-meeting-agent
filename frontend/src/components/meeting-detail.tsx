@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiFetch, type MeetingDetail as MeetingDetailData } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -118,7 +119,17 @@ function CommitmentsTab({
             </span>
           </div>
           <p className="t-data text-paper-muted mt-1">
-            {row.owner ?? "unowned"} · {row.due_date ?? "no deadline"}
+            {row.owner && row.owner_id ? (
+              <Link
+                href={`/people/${row.owner_id}`}
+                className="hover:text-paper underline decoration-dotted underline-offset-2"
+              >
+                {row.owner}
+              </Link>
+            ) : (
+              "unowned"
+            )}{" "}
+            · {row.due_date ?? "no deadline"}
             {row.slip_count > 0 && (
               <span className="text-debt"> · slipped {row.slip_count}×</span>
             )}

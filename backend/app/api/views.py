@@ -27,6 +27,7 @@ from app.models.domain import (
     Communication,
     Decision,
     Meeting,
+    MockTask,
     Person,
     Rejection,
     Run,
@@ -64,6 +65,7 @@ class CommitmentOut(BaseModel):
     kind: str
     status: str
     owner: str | None
+    owner_id: uuid.UUID | None
     owner_confidence: float
     owner_reason: str | None
     due_date: date | None
@@ -178,6 +180,7 @@ def _to_out(commitment: Commitment, owner: str | None, today: date) -> Commitmen
         kind=commitment.kind.value,
         status=commitment.status.value,
         owner=owner,
+        owner_id=commitment.owner_id,
         owner_confidence=commitment.owner_confidence,
         owner_reason=commitment.owner_inference_reason,
         due_date=commitment.due_date,
@@ -402,6 +405,117 @@ async def commitment_timeline(commitment_id: uuid.UUID, session: SessionDep) -> 
             for event in events
         ],
     }
+
+
+class PersonSummary(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: str | None
+    aliases: list[str]
+    open_items: int
+    overdue: int
+    at_risk: int
+
+
+class PersonLedger(BaseModel):
+    """One person's promises, which is the view the ledger exists to produce.
+
+    Everything else in the console is organised by meeting, and nobody thinks
+    about their own work that way. They think "what have I said I would do,
+    and what is late".
+    """
+
+    person: PersonSummary
+    commitments: list[CommitmentOut]
+    tasks: list[dict[str, Any]]
+
+
+@router.get("/people", response_model=list[PersonSummary])
+async def list_people(session: SessionDep, settings: SettingsDep) -> list[PersonSummary]:
+    people = (await session.scalars(select(Person).order_by(Person.name))).all()
+    if not people:
+        return []
+
+    commitments = (
+        await session.scalars(
+            select(Commitment).where(
+                Commitment.owner_id.in_([person.id for person in people]),
+                Commitment.status.notin_([CommitmentStatus.DONE, CommitmentStatus.DROPPED]),
+            )
+        )
+    ).all()
+    today = today_in(settings.default_timezone)
+
+    return [
+        PersonSummary(
+            id=person.id,
+            name=person.name,
+            role=person.role,
+            aliases=person.aliases,
+            open_items=len(owned),
+            overdue=len([c for c in owned if c.due_date and c.due_date < today]),
+            at_risk=len([c for c in owned if _assess(c, today).band != "low"]),
+        )
+        for person in people
+        for owned in [[c for c in commitments if c.owner_id == person.id]]
+    ]
+
+
+@router.get("/people/{person_id}", response_model=PersonLedger)
+async def person_ledger(
+    person_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+) -> PersonLedger:
+    person = await session.get(Person, person_id)
+    if person is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such person.")
+
+    commitments = (
+        await session.scalars(
+            select(Commitment)
+            .where(Commitment.owner_id == person_id)
+            .order_by(Commitment.due_date.is_(None), Commitment.due_date)
+        )
+    ).all()
+    today = today_in(settings.default_timezone)
+
+    # The tasks the Operator actually created for this person, so the page
+    # shows what left the system as well as what it decided.
+    tasks = (
+        await session.scalars(
+            select(MockTask)
+            .where(MockTask.assignee == person.name)
+            .order_by(MockTask.created_at.desc())
+        )
+    ).all()
+
+    open_items = [
+        item
+        for item in commitments
+        if item.status not in (CommitmentStatus.DONE, CommitmentStatus.DROPPED)
+    ]
+
+    return PersonLedger(
+        person=PersonSummary(
+            id=person.id,
+            name=person.name,
+            role=person.role,
+            aliases=person.aliases,
+            open_items=len(open_items),
+            overdue=len([c for c in open_items if c.due_date and c.due_date < today]),
+            at_risk=len([c for c in open_items if _assess(c, today).band != "low"]),
+        ),
+        commitments=[_to_out(item, person.name, today) for item in commitments],
+        tasks=[
+            {
+                "external_id": task.external_id,
+                "title": task.title,
+                "status": task.status.value,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "url": f"/mock/v1/tasks/{task.external_id}",
+            }
+            for task in tasks
+        ],
+    )
 
 
 @router.get("/clarifications", response_model=list[ClarificationOut])

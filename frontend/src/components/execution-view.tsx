@@ -133,7 +133,19 @@ export function ExecutionView() {
                   )}
                 </td>
                 <td className="t-data px-3 py-2.5">
-                  {row.owner ?? <span className="text-debt">unowned</span>}
+                  {row.owner && row.owner_id ? (
+                    // Stops the row's evidence drawer from opening underneath
+                    // the navigation.
+                    <Link
+                      href={`/people/${row.owner_id}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="hover:text-paper underline decoration-dotted underline-offset-2"
+                    >
+                      {row.owner}
+                    </Link>
+                  ) : (
+                    <span className="text-debt">unowned</span>
+                  )}
                 </td>
                 <td className="t-data px-3 py-2.5">
                   {row.due_date ?? <span className="text-pending">none</span>}

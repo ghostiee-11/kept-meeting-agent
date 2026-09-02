@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 const NAV = [
   { href: "/", label: "Run", hint: "Process a transcript" },
   { href: "/execution", label: "Execution", hint: "Who owes what" },
+  { href: "/people", label: "People", hint: "One person's promises" },
   { href: "/ops", label: "Ops", hint: "Traces, cost, tasks" },
 ] as const;
 
