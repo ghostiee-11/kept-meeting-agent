@@ -1,0 +1,113 @@
+{
+  "generated_at": "2026-09-02",
+  "models": {
+    "tiers": {
+      "fast": {
+        "primary": "groq:openai/gpt-oss-20b",
+        "fallbacks": [],
+        "structured_output": "json_schema"
+      },
+      "reason": {
+        "primary": "groq:openai/gpt-oss-120b",
+        "fallbacks": [
+          "groq:openai/gpt-oss-20b"
+        ],
+        "structured_output": "json_schema"
+      },
+      "skeptic": {
+        "primary": "groq:qwen/qwen3.8-27b",
+        "fallbacks": [
+          "groq:openai/gpt-oss-120b"
+        ],
+        "structured_output": "function_calling"
+      },
+      "judge": null,
+      "guard": {
+        "primary": "groq:meta-llama/llama-prompt-guard-2-86m",
+        "fallbacks": [],
+        "structured_output": "none"
+      }
+    },
+    "validation": {},
+    "independent_review": false
+  },
+  "cases": [
+    {
+      "name": "followup_slippage",
+      "extracted": 2,
+      "matched": 0,
+      "expected": 0,
+      "false_positives": [],
+      "owners_correct": 0,
+      "owners_abstained_correctly": 0,
+      "owners_wrong": [],
+      "dates_correct": 0,
+      "grounding_verified": 2,
+      "grounding_failed": 0,
+      "rejections": [],
+      "seconds": 7.4,
+      "cost_usd": 0.00263,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "name": "hard_cases",
+      "extracted": 0,
+      "matched": 0,
+      "expected": 4,
+      "false_positives": [],
+      "owners_correct": 0,
+      "owners_abstained_correctly": 0,
+      "owners_wrong": [],
+      "dates_correct": 0,
+      "grounding_verified": 0,
+      "grounding_failed": 0,
+      "rejections": [],
+      "seconds": 48.4,
+      "cost_usd": 0.00239,
+      "precision": 1.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    {
+      "name": "no_commitments",
+      "extracted": 0,
+      "matched": 0,
+      "expected": 0,
+      "false_positives": [],
+      "owners_correct": 0,
+      "owners_abstained_correctly": 0,
+      "owners_wrong": [],
+      "dates_correct": 0,
+      "grounding_verified": 0,
+      "grounding_failed": 0,
+      "rejections": [],
+      "seconds": 30.5,
+      "cost_usd": 0.0014,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "name": "standup_clean",
+      "extracted": 3,
+      "matched": 2,
+      "expected": 3,
+      "false_positives": [],
+      "owners_correct": 2,
+      "owners_abstained_correctly": 0,
+      "owners_wrong": [],
+      "dates_correct": 2,
+      "grounding_verified": 3,
+      "grounding_failed": 0,
+      "rejections": [],
+      "seconds": 15.3,
+      "cost_usd": 0.00286,
+      "precision": 1.0,
+      "recall": 0.6666666666666666,
+      "f1": 0.8
+    }
+  ],
+  "ablation_no_skeptic": []
+}

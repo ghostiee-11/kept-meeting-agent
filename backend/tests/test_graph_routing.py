@@ -28,11 +28,20 @@ def test_the_summary_names_what_is_still_outstanding() -> None:
     re-delegates work it has already delegated."""
     summary = _summarise(state(progress=["intelligence: 3 obligations"]))
 
-    assert "Still to run: resolution, execution." in summary
+    assert "Still to run: resolution, history, execution." in summary
 
 
 def test_the_summary_says_to_finish_once_every_team_has_run() -> None:
-    summary = _summarise(state(progress=["intelligence: ok", "resolution: ok", "execution: ok"]))
+    summary = _summarise(
+        state(
+            progress=[
+                "intelligence: ok",
+                "resolution: ok",
+                "history: ok",
+                "execution: ok",
+            ]
+        )
+    )
 
     assert "Every team has run." in summary
     assert "Call finish now." in summary

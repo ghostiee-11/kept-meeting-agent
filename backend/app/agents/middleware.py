@@ -30,6 +30,7 @@ from app.agents.contracts import Evidence, Grounded
 from app.logging import get_logger
 from app.services import trace
 from app.services.model_router import ModelRouter
+from app.services.rate_budget import BudgetRegistry, estimate_tokens
 from app.services.verifier import verify_evidence
 
 log = get_logger(__name__)
@@ -38,16 +39,34 @@ log = get_logger(__name__)
 class CostMeterMiddleware(AgentMiddleware[Any, Any]):
     """Meter every model call this agent makes."""
 
-    def __init__(self, agent: str, router: ModelRouter) -> None:
+    def __init__(
+        self, agent: str, router: ModelRouter, budgets: BudgetRegistry | None = None
+    ) -> None:
         super().__init__()
         self.agent = agent
         self._router = router
+        self._budgets = budgets
 
     async def awrap_model_call(
         self,
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
+        model_name = getattr(request.model, "model_name", None) or str(request.model)
+        estimated = estimate_tokens(
+            "".join(str(getattr(message, "content", "")) for message in request.messages)
+        )
+
+        if self._budgets is not None:
+            waited = await self._budgets.for_model(model_name).reserve(estimated)
+            if waited:
+                trace.record(
+                    self.agent,
+                    "rate_paced",
+                    latency_ms=int(waited * 1000),
+                    payload={"seconds": round(waited, 1), "model": model_name},
+                )
+
         started = time.perf_counter()
         trace.record(self.agent, "model_call_started")
 
@@ -63,13 +82,16 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
             raise
 
         latency_ms = int((time.perf_counter() - started) * 1000)
-        tokens_in, tokens_out, model_name = _usage_of(response)
+        tokens_in, tokens_out, reported_model = _usage_of(response)
 
         # The model actually used can differ from the one requested, because
         # ModelFallbackMiddleware may have moved down the chain. Reporting the
         # requested model would hide exactly the event worth seeing.
-        identifier = _identifier_of(request, model_name)
+        identifier = _identifier_of(request, reported_model)
         spec = self._router.spec_for(identifier)
+
+        if self._budgets is not None:
+            self._budgets.for_model(model_name).reconcile(estimated, tokens_in + tokens_out)
 
         trace.record(
             self.agent,

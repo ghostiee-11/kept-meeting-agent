@@ -32,8 +32,20 @@ from app.agents.middleware import CostMeterMiddleware, GroundingMiddleware
 from app.config import Settings
 from app.logging import get_logger
 from app.services.model_router import ModelRouter, ModelSpec, Tier
+from app.services.rate_budget import BudgetRegistry
 
 log = get_logger(__name__)
+
+# One registry for the process, so every agent's calls share the same sliding
+# window. A per-agent budget would let nine agents each spend the whole limit.
+_BUDGETS: BudgetRegistry | None = None
+
+
+def budgets(settings: Settings) -> BudgetRegistry:
+    global _BUDGETS
+    if _BUDGETS is None:
+        _BUDGETS = BudgetRegistry(settings.tokens_per_minute)
+    return _BUDGETS
 
 
 @dataclass(frozen=True)
@@ -73,7 +85,7 @@ def build_agent(
     model = router.build_spec(primary, temperature=spec.temperature)
 
     middleware: list[AgentMiddleware[Any, Any]] = [
-        CostMeterMiddleware(spec.name, router),
+        CostMeterMiddleware(spec.name, router, budgets(settings)),
     ]
 
     if spec.grounded:

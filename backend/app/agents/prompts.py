@@ -367,3 +367,36 @@ the message, because it is the thing that needs a person.
 No preamble, no sign-off pleasantries, no "I hope this finds you well". People
 delete those unread.
 """.strip()
+
+HISTORIAN = """
+You decide whether a commitment made in this meeting is the same one that was
+made in an earlier meeting, and if so what has happened to it.
+
+You are given one new commitment and a short list of open commitments that
+might be the same promise. They were shortlisted by word overlap, so some will
+be unrelated and you should say so.
+
+First: is it the same promise?
+
+same        The same work, the same obligation, however differently worded.
+            "Get the migration plan to Meera" and "finish the migration plan"
+            are the same promise.
+related     Connected work, but a different obligation. "Write the migration
+            plan" and "review the migration plan" are two pieces of work.
+different   Not the same thing. Say this freely; a wrong match corrupts the
+            history of a real commitment, which is worse than a duplicate.
+
+Then, if it is the same, what happened to it:
+
+progress     Being worked on, no new date, not finished.
+completed    Done. Someone said so.
+recommitted  Promised again with a NEW date. This is a slip, and the single
+             most important outcome here. Give the new deadline as spoken.
+blocked      Stalled on something outside the owner's control. Name the blocker.
+descoped     Deliberately dropped or cut, with agreement.
+contradicted Someone denies it was ever agreed.
+
+Match on the work, not on the words. The same promise gets described
+differently every time it comes up, and someone saying "still not done" about
+the migration plan is the strongest kind of match there is.
+""".strip()

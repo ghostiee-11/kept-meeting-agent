@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     max_model_calls_per_run: int = 60
     max_supervisor_steps: int = 20
 
+    tokens_per_minute: int = 8000
+    """The provider's per-model tokens-per-minute ceiling. Groq's free tier is
+    8000. Calls are paced to stay under it rather than retried after breaching
+    it, because exceeding it returns an empty generation rather than a clean
+    429, so a budget problem arrives looking like a model problem."""
+
     analyst_concurrency: int = 2
     """How many extraction briefs run at once.
 

@@ -118,6 +118,7 @@ async def run_meeting(
             roster=roster,
             timezone=payload.timezone,
             meeting_title=payload.title,
+            workspace_id=workspace.id,
             reused_meeting=not is_new,
         ),
         media_type="text/event-stream",
@@ -143,6 +144,7 @@ async def _stream_run(
     roster: list[RosterEntry],
     timezone: str,
     meeting_title: str,
+    workspace_id: uuid.UUID,
     reused_meeting: bool,
 ) -> AsyncIterator[str]:
     """Drive the graph, forwarding every agent event to the browser.
@@ -173,10 +175,16 @@ async def _stream_run(
     async def drive() -> MeetingState:
         async with factory() as session:
             search = SearchService(settings, session=session)
-            graph = build_meeting_graph(router=router_, settings=settings, search=search)
+            graph = build_meeting_graph(
+                router=router_,
+                settings=settings,
+                search=search,
+                session_factory=factory,
+            )
             initial = {
                 "messages": [],
                 "meeting_id": str(meeting_id),
+                "workspace_id": str(workspace_id),
                 "run_id": str(run_id),
                 "transcript": transcript,
                 "meeting_title": meeting_title,
@@ -195,6 +203,7 @@ async def _stream_run(
                 "questions": [],
                 "enrichments": {},
                 "communications": {},
+                "slippage": {},
             }
             final: dict[str, Any] = {}
             async for chunk in graph.astream(

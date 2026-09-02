@@ -78,6 +78,7 @@ class MeetingState(MessagesState):
 
     # ---- Input, set once -----------------------------------------------
     meeting_id: str
+    workspace_id: str
     run_id: str
     transcript: str
     meeting_title: str
@@ -113,6 +114,8 @@ class MeetingState(MessagesState):
     enrichments: dict[int, Enrichment]
     questions: list[Question]
     communications: dict[str, str]
+    slippage: dict[str, list[str]]
+    """What the Historian found about promises from earlier meetings."""
 
 
 class TeamReport(TypedDict):

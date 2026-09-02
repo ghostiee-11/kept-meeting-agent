@@ -20,6 +20,7 @@ guarantees the loop ends whatever the model decides.
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from typing import Any
 
@@ -30,6 +31,7 @@ from app.agents import prompts
 from app.agents.base import AgentSpec, build_agent
 from app.agents.execution import create_tasks, draft_communications
 from app.agents.handoff import handoff_tools
+from app.agents.historian import reconcile
 from app.agents.intelligence import extract, review
 from app.agents.resolution import enrich_decisions, resolve_deadlines, resolve_owners
 from app.config import Settings
@@ -52,6 +54,10 @@ TEAMS = {
     "resolution": (
         "Work out who owns each obligation and when it is due. Abstain rather "
         "than guess, and report what could not be settled."
+    ),
+    "history": (
+        "Match this meeting's commitments against open ones from earlier meetings. "
+        "Record what progressed, what slipped, and what nobody mentioned."
     ),
     "execution": ("Score risk, create tasks in the tracker, and draft the follow-up messages."),
 }
@@ -112,6 +118,7 @@ def build_meeting_graph(
     settings: Settings,
     search: SearchService | None = None,
     checkpointer: Any | None = None,
+    session_factory: Any | None = None,
 ) -> Any:
     """Assemble the supervisor and its three team nodes."""
 
@@ -286,6 +293,46 @@ def build_meeting_graph(
             },
         )
 
+    async def history(state: MeetingState) -> Command[Any]:
+        """Reconcile against earlier meetings.
+
+        Needs a database, because the ledger is the point. Without one it says
+        so and moves on rather than silently reporting that nothing slipped,
+        which would be the same output as a clean week.
+        """
+        if skip := _already_done(state, "history", "Delegate to execution next."):
+            return skip
+        if session_factory is None or not state.get("items"):
+            message = "history: no ledger available, skipped"
+            return Command(goto="chief_of_staff", update={"progress": [message]})
+
+        async with session_factory() as session:
+            found = await reconcile(
+                session,
+                [(item.commitment, item.attribution.display_name) for item in state["items"]],
+                workspace_id=uuid.UUID(state["workspace_id"]),
+                meeting_id=uuid.UUID(state["meeting_id"]),
+                meeting_date=state["meeting_date"],
+                timezone=state.get("timezone", "UTC"),
+                router=router,
+                settings=settings,
+            )
+            await session.commit()
+
+        return Command(
+            goto="chief_of_staff",
+            update={
+                "slippage": {
+                    "progressed": found.progressed,
+                    "completed": found.completed,
+                    "slipped": found.slipped,
+                    "blocked": found.blocked,
+                    "unmentioned": found.unmentioned,
+                },
+                "progress": [found.summary()],
+            },
+        )
+
     async def execution(state: MeetingState) -> Command[Any]:
         if skip := _already_done(state, "execution", "Call finish now."):
             return skip
@@ -356,6 +403,7 @@ def build_meeting_graph(
     builder.add_node("chief_of_staff", chief_of_staff)
     builder.add_node("intelligence", intelligence)
     builder.add_node("resolution", resolution)
+    builder.add_node("history", history)
     builder.add_node("execution", execution)
     builder.add_edge(START, "chief_of_staff")
 
