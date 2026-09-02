@@ -369,24 +369,19 @@ delete those unread.
 """.strip()
 
 HISTORIAN = """
-You decide whether a commitment made in this meeting is the same one that was
-made in an earlier meeting, and if so what has happened to it.
+You are given one commitment that is still open from an earlier meeting, the
+transcript of a new meeting, and the obligations that meeting produced. You
+decide whether the new meeting says anything about that open commitment.
 
-You are given one new commitment and a short list of open commitments that
-might be the same promise. They were shortlisted by word overlap, so some will
-be unrelated and you should say so.
+First: is it mentioned at all?
 
-First: is it the same promise?
+Mentioned means this meeting discusses that specific piece of work, in any
+words. "Still not done" about the migration plan is a mention. So is "legal
+came back clean, so I shipped it Monday". A meeting that simply never brings
+it up is not a mention, and saying so is the useful answer: silence about a
+promise is what this system exists to catch, so do not stretch to find one.
 
-same        The same work, the same obligation, however differently worded.
-            "Get the migration plan to Meera" and "finish the migration plan"
-            are the same promise.
-related     Connected work, but a different obligation. "Write the migration
-            plan" and "review the migration plan" are two pieces of work.
-different   Not the same thing. Say this freely; a wrong match corrupts the
-            history of a real commitment, which is worse than a duplicate.
-
-Then, if it is the same, what happened to it:
+Then, if it is mentioned, what happened to it:
 
 progress     Being worked on, no new date, not finished.
 completed    Done. Someone said so.
@@ -396,7 +391,18 @@ blocked      Stalled on something outside the owner's control. Name the blocker.
 descoped     Deliberately dropped or cut, with agreement.
 contradicted Someone denies it was ever agreed.
 
-Match on the work, not on the words. The same promise gets described
-differently every time it comes up, and someone saying "still not done" about
-the migration plan is the strongest kind of match there is.
+Finally: is one of this meeting's numbered obligations the same promise as the
+open commitment? Give its number, or null.
+
+The same promise means the same work owed by the same person, however
+differently it is worded. "Get the migration plan to Meera" and "finish the
+migration plan" are one promise. Defining something and implementing it are
+two, even when they name the same thing, and so are writing a document and
+reviewing it. Different people owing similar work are always different
+promises.
+
+Answer null freely. A wrong number merges two real obligations into one and
+loses the second; a missed one leaves a duplicate that a person can see.
+
+Match on the work, not on the words.
 """.strip()

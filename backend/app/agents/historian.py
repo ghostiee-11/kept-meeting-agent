@@ -43,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents import prompts
 from app.agents.base import AgentSpec, build_agent
 from app.config import Settings
+from app.graph.state import ResolvedItem
 from app.logging import get_logger
 from app.models.base import ActorKind, CommitmentStatus, EventType, MentionOutcome
 from app.models.domain import Commitment, CommitmentEvent, CommitmentMention
@@ -81,6 +82,16 @@ class MatchVerdict(BaseModel):
         default=None, description="The new deadline as spoken, when recommitted."
     )
     blocker: str | None = Field(default=None, description="What is in the way, when blocked.")
+    restates: int | None = Field(
+        default=None,
+        description=(
+            "The number of the obligation from this meeting that is the same "
+            "promise as the open commitment, or null if none of them is. Same "
+            "promise means the same work by the same person, however it was "
+            "worded. Defining something and implementing it are different "
+            "promises even when they name the same thing."
+        ),
+    )
     reasoning: str = Field(description="One sentence a human can check against the transcript.")
 
 
@@ -94,6 +105,16 @@ class Slippage:
     blocked: list[str] = field(default_factory=list)
     unmentioned: list[str] = field(default_factory=list)
     matched_ids: set[uuid.UUID] = field(default_factory=set)
+
+    restated: set[int] = field(default_factory=set)
+    """Positions in this meeting's obligations that are the same promise as a
+    row the ledger already has.
+
+    They are dropped before persistence rather than written again. A promise
+    restated in three meetings is one row with three events, not three rows:
+    the whole point of the ledger is that "who owes what" has one answer, and
+    duplicates would go on to be reported as separate slippage against
+    themselves."""
 
     @property
     def is_empty(self) -> bool:
@@ -122,6 +143,7 @@ class Slippage:
 async def reconcile(
     session: AsyncSession,
     transcript: str,
+    items: list[ResolvedItem],
     *,
     workspace_id: uuid.UUID,
     meeting_id: uuid.UUID,
@@ -163,9 +185,13 @@ async def reconcile(
     )
 
     for commitment in to_check:
-        verdict = await _check_one(agent, commitment, transcript)
+        verdict = await _check_one(agent, commitment, transcript, items)
         if verdict is None or not verdict.mentioned:
             continue
+
+        restated = _restated_index(verdict, commitment, items, already=result.restated)
+        if restated is not None:
+            result.restated.add(restated)
 
         _apply(
             session,
@@ -193,14 +219,18 @@ async def reconcile(
     return result
 
 
-async def _check_one(agent: object, commitment: Commitment, transcript: str) -> MatchVerdict | None:
+async def _check_one(
+    agent: object, commitment: Commitment, transcript: str, items: list[ResolvedItem]
+) -> MatchVerdict | None:
     message = (
         f"Open commitment: {commitment.text}\n"
         f"Owner: {commitment.owner.name if commitment.owner else 'unowned'}\n"
         f"Due: {commitment.due_date or 'no date'}"
         f"{f' (moved {commitment.slip_count}x already)' if commitment.slip_count else ''}\n\n"
         f"This meeting's transcript:\n{transcript}\n\n"
-        "Does this meeting say anything about the commitment above? If so, what happened to it?"
+        f"{_numbered(items)}\n"
+        "Does this meeting say anything about the commitment above? If so, what "
+        "happened to it, and is one of this meeting's obligations the same promise?"
     )
 
     # One retry, not a loop: the same policy extraction uses, for the same
@@ -220,6 +250,65 @@ async def _check_one(agent: object, commitment: Commitment, transcript: str) -> 
         verdict: MatchVerdict | None = result.get("structured_response")
         return verdict
     return None
+
+
+def _numbered(items: list[ResolvedItem]) -> str:
+    """This meeting's obligations, as a numbered list the model can point at."""
+    if not items:
+        return "This meeting produced no obligations of its own."
+
+    lines = ["Obligations extracted from this meeting:"]
+    for index, item in enumerate(items):
+        owner = item.attribution.display_name or "unowned"
+        due = item.deadline.due.isoformat() if item.deadline.due else "no date"
+        lines.append(f"  {index}. {item.commitment.text} | {owner} | {due}")
+    return "\n".join(lines)
+
+
+# A restatement of the same promise, worded differently, still shares most of
+# its content words. This is a floor under the model's answer, not a way of
+# finding the match: lexical similarity alone cannot tell "define the analytics
+# events" from "implement the analytics events", which is why the judgment is
+# the model's in the first place.
+_RESTATEMENT_FLOOR = 0.35
+
+
+def _restated_index(
+    verdict: MatchVerdict,
+    commitment: Commitment,
+    items: list[ResolvedItem],
+    *,
+    already: set[int],
+) -> int | None:
+    """Which of this meeting's obligations is the ledger row again, if any.
+
+    Everything here is a reason to disbelieve the model, because the cost of a
+    wrong yes is a real new commitment silently deleted, while the cost of a
+    wrong no is one duplicate row a person can see and merge.
+    """
+    index = verdict.restates
+    if index is None or not (0 <= index < len(items)) or index in already:
+        return None
+
+    item = items[index]
+    if ledger.similarity(item.commitment.text, commitment.text) < _RESTATEMENT_FLOOR:
+        log.info(
+            "historian.restatement_rejected",
+            reason="texts are too far apart",
+            ledger_text=commitment.text[:80],
+            item_text=item.commitment.text[:80],
+        )
+        return None
+
+    # Two people can promise similar work. Only the same person restating it
+    # is the same promise, and an unowned side is unresolved rather than
+    # contradictory.
+    owners = {commitment.owner_id, item.owner_id}
+    if None not in owners and len(owners) > 1:
+        log.info("historian.restatement_rejected", reason="different owners")
+        return None
+
+    return index
 
 
 def _apply(

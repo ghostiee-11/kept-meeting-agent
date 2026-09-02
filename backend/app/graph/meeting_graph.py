@@ -306,10 +306,12 @@ def build_meeting_graph(
             message = "history: no ledger available, skipped"
             return Command(goto="chief_of_staff", update={"progress": [message]})
 
+        items: list[ResolvedItem] = state["items"]
         async with session_factory() as session:
             found = await reconcile(
                 session,
                 state["transcript"],
+                items,
                 workspace_id=uuid.UUID(state["workspace_id"]),
                 meeting_id=uuid.UUID(state["meeting_id"]),
                 meeting_date=state["meeting_date"],
@@ -319,9 +321,22 @@ def build_meeting_graph(
             )
             await session.commit()
 
+        # A promise made again is the same promise. The ledger row it already
+        # has was just updated with the slip or the progress, so writing this
+        # meeting's copy as well would leave two rows for one obligation and,
+        # worse, have the next meeting report each as slipping independently.
+        kept = [item for index, item in enumerate(items) if index not in found.restated]
+        progress = [found.summary()]
+        if found.restated:
+            progress.append(
+                f"history: {len(found.restated)} of this meeting's obligations were "
+                "already on the ledger and were folded into the existing rows"
+            )
+
         return Command(
             goto="chief_of_staff",
             update={
+                "items": kept,
                 "slippage": {
                     "progressed": found.progressed,
                     "completed": found.completed,
@@ -329,7 +344,7 @@ def build_meeting_graph(
                     "blocked": found.blocked,
                     "unmentioned": found.unmentioned,
                 },
-                "progress": [found.summary()],
+                "progress": progress,
             },
         )
 
