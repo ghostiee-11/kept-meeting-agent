@@ -57,7 +57,13 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
             "".join(str(getattr(message, "content", "")) for message in request.messages)
         )
 
-        if self._budgets is not None:
+        # Paced only where a per-minute ceiling actually exists. The budget was
+        # written for Groq's free tier, and applying it to a paid provider
+        # makes the system wait for a limit that provider does not impose: it
+        # cost fifty seconds a call in an evaluation run before this check.
+        paced = self._budgets is not None and _is_rate_limited(request)
+
+        if paced and self._budgets is not None:
             waited = await self._budgets.for_model(model_name).reserve(estimated)
             if waited:
                 trace.record(
@@ -90,7 +96,7 @@ class CostMeterMiddleware(AgentMiddleware[Any, Any]):
         identifier = _identifier_of(request, reported_model)
         spec = self._router.spec_for(identifier)
 
-        if self._budgets is not None:
+        if paced and self._budgets is not None:
             self._budgets.for_model(model_name).reconcile(estimated, tokens_in + tokens_out)
 
         trace.record(
@@ -174,6 +180,18 @@ class GroundingMiddleware(AgentMiddleware[Any, Any]):
             _, reasons = verify_evidence(transcript, evidence, turns=turns)
             missing.extend(_quote_from(reason) for reason in reasons)
         return [quote for quote in missing if quote]
+
+
+# Which providers hand out a per-minute token allowance small enough to plan
+# around. Free-tier Groq does; a paid OpenAI project does not, and Gemini's
+# free tier limits requests per day rather than tokens per minute, which no
+# amount of in-process pacing can help with.
+_RATE_LIMITED_PROVIDERS = ("groq",)
+
+
+def _is_rate_limited(request: ModelRequest[Any]) -> bool:
+    provider = str(getattr(request.model, "_llm_type", "")).lower()
+    return any(name in provider for name in _RATE_LIMITED_PROVIDERS)
 
 
 def _usage_of(response: ModelResponse[Any]) -> tuple[int, int, str | None]:

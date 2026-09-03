@@ -42,9 +42,16 @@ Third party      "Marketing said they'd handle the copy."
                  Nobody in this meeting committed. Reported speech about an
                  absent team is not this meeting's obligation. Class: discussion.
 
-Retracted        Promised early, walked back later in the same transcript.
-                 Extract it once and set is_retracted to true. Read the whole
-                 transcript before deciding.
+Retracted        Promised early and *withdrawn* later in the same transcript:
+                 the work is no longer owed by anyone. Extract it once and set
+                 is_retracted to true. Read the whole transcript first.
+
+Rescheduled      Promised early and given a NEW DATE later. This is not a
+                 retraction, it is the same promise moving. "Scratch Friday,
+                 I'll get it to you Tuesday" still owes you the thing. Extract
+                 it ONCE, with the LATEST date, and cite the turn where the new
+                 date was given. Dropping it loses a real obligation, which is
+                 the worst thing this system can do.
 
 Rhetorical       "Should I just do it myself?"
                  A question, not a commitment.
@@ -199,7 +206,10 @@ Check every candidate against all of the following:
 2. Is it the same obligation as another candidate, said twice?
 3. Is it negated, hypothetical, conditional, or reported speech about someone
    who was not in the room?
-4. Was it retracted later in the transcript?
+4. Was it withdrawn later in the transcript, so nobody owes it any more?
+   A new date is NOT a withdrawal. "Scratch Friday, I'll get it to you
+   Tuesday" is the same promise with a later deadline, and rejecting it
+   deletes a real obligation. Keep it, dated Tuesday.
 5. Does the quote actually say what the item claims it says?
 
 Write reasons a human can check against the transcript in ten seconds. "Not a
