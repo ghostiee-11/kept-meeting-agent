@@ -328,6 +328,7 @@ async def _run_followup(
     found_slippage = await reconcile(
         session,
         transcript,
+        items,
         workspace_id=workspace.id,
         meeting_id=meeting.id,
         meeting_date=FOLLOWUP_DATE,
