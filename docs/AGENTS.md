@@ -204,12 +204,26 @@ part is the problem, and an LLM-produced number cannot tell them.
 
 | Tier | Who | Chain |
 | --- | --- | --- |
-| fast | Chief of Staff, Scribe, Operator, Herald | Groq gpt-oss-20b, then Gemini Flash-Lite, then OpenAI mini |
-| reason | Analyst, Attributor, Chronos, Researcher, Historian | Groq gpt-oss-120b, then Gemini 3 Flash, then OpenAI mini, then Groq gpt-oss-20b |
-| skeptic | Skeptic | ordered to land on a different provider from the Analyst |
-| judge | evaluation only | OpenAI, never the model that produced the output |
+| fast | Chief of Staff, Scribe, Operator, Herald | OpenAI gpt-5.4-nano, then Groq gpt-oss-20b, then Gemini Flash-Lite |
+| reason | Analyst, Attributor, Chronos, Researcher, Historian | OpenAI gpt-5.4-mini, then Groq gpt-oss-120b, then Gemini Flash-Lite, then Groq gpt-oss-20b |
+| skeptic | Skeptic | ordered to land on a provider the Analyst did not use |
+| judge | evaluation only | never the vendor that produced the output |
+
+Paid first and free underneath, which is the opposite of the obvious order and
+the right one. Measured over a full run, 113 seconds went to models and 286
+went to waiting for a free tier's token window to roll over. The chains still
+resolve to Groq and Gemini when no paid key is configured, so the system runs
+either way, just more slowly. See
+[ADR 7](adr/0007-paid-reasoning-tier.md).
 
 Every identifier is environment-overridable and checked against the provider's
-own model list at boot. That check earned itself immediately: the model this
-project was planned around, `llama-3.3-70b-versatile`, does not exist on the
-Groq account it runs under.
+own model list at boot. That check has earned itself three times: the Groq
+model this project was planned around does not exist on the account it runs
+under, the Gemini identifier was wrong, and OpenAI's `gpt-5-mini` appears in
+this account's listing while returning 404 on use because the organisation is
+unverified. A listing is not an entitlement.
+
+Cost, per meeting, at current prices: roughly **$0.024** for a short meeting
+and **$0.088** for a long one. The console shows it per run and the evaluation
+reports it per case, because a number nobody can see is a number nobody can
+challenge.

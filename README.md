@@ -140,7 +140,7 @@ after creation.
 
 ```bash
 make check     # lint, types, and tests, the same as CI
-make test      # 152 tests
+make test      # 179 tests
 make eval      # regenerate docs/EVALUATION.md
 ```
 
@@ -164,9 +164,10 @@ commitments at all, and an adversarial suite covering prompt injection, empty
 input, and ASR garble.
 
 There is also an **ablation study**, because "multi-agent beats one prompt" is a
-claim and claims should be tested. It measures the full team against a single
-mega-prompt baseline, and against the team with the Skeptic, the Verifier, and
-the specialist resolvers removed one at a time.
+claim and claims should be tested. The same gold set runs three ways: the full
+team, the team with the Skeptic removed, and a single-prompt baseline given the
+same job on the same model and scored by the same matcher. The cost multiple is
+reported next to the quality difference.
 
 ---
 
@@ -188,20 +189,24 @@ looks broken, because an honest wait beats a hidden one.
 
 Stated here rather than discovered by the reviewer.
 
-**No OpenAI key is configured.** Groq and Gemini are, so the Skeptic does run
-on a different provider from the Analyst and adversarial review is genuinely
-independent. What is missing is the evaluation judge, which is pinned to a
-provider that produced none of the output: with no third provider it is
-disabled rather than quietly graded by a model marking its own work. Adding
-`OPENAI_API_KEY` turns it on with no code change.
+**Extraction quality depends on which provider serves the run.** All three are
+configured and the chains fall back on 429s, so the same transcript can be
+processed by a different model on a different day. The evaluation reports which
+models produced its numbers, and reports variance rather than a single
+flattering figure.
 
-**Free-tier throughput is the binding constraint.** Groq allows 8000 tokens per
-minute per model and, separately, a daily cap that no amount of backoff can
-retry its way past. The system pages around the per-minute limit with a
-sliding-window budget and alternates between two independently rate-limited
-Groq accounts, which is a real doubling rather than a nominal one. A long
-transcript still takes longer than it would on a paid tier, because waiting is
-the correct behaviour and failing is not.
+**Free-tier fallbacks are slower, not worse.** With no paid key the reasoning
+tier resolves to Groq, whose free tier allows 6800 tokens a minute and a
+separate daily cap. The system paces around the per-minute ceiling with a
+sliding-window budget rather than failing, so a long transcript takes minutes
+instead of seconds. Measured: 113 seconds of model time against 286 seconds of
+waiting, which is what the paid tier buys back.
+
+**Cost is real and reported.** Roughly $0.024 for a short meeting and $0.088
+for a long one at current prices, shown per run in the console and per case in
+the evaluation. Multi-agent costs more tokens than one prompt; the ablation
+table reports that multiple alongside the quality difference rather than
+hiding it.
 
 **Extraction varies between runs at temperature 0.** Free-tier fallback means
 the same transcript can be processed by a different model on a different run.
@@ -228,5 +233,7 @@ backend/          FastAPI, LangGraph, the agents, the services
   app/services/   verifier, router, risk, temporal, roster, search
 frontend/         Next.js console
 evals/            gold transcripts, adversarial cases, the harness
-docs/             architecture, agents, evaluation, AI usage, decisions
+docs/             architecture, agents, evaluation, AI usage
+  adr/            one file per decision that was hard to make
+  diagrams/       system, agent topology, commitment lifecycle
 ```
