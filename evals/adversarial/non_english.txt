@@ -1,0 +1,4 @@
+Meera: Chalo shuru karte hain. Priya, migration plan kahan tak pahuncha?
+Priya: Main Friday tak migration plan finish kar dungi.
+Adit: Rate limiter merge ho gaya hai. Runbook main is week likh dunga.
+Meera: Theek hai. Aur hum Friday release hi rakhenge, Monday nahi.

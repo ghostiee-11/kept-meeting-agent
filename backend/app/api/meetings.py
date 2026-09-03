@@ -28,6 +28,7 @@ from app.graph.state import MeetingState
 from app.logging import get_logger
 from app.models.base import RunStatus
 from app.models.domain import Meeting, Person, Run, Workspace
+from app.security import injection
 from app.security.auth import require_demo_key
 from app.services import persistence, trace
 from app.services.model_router import ModelRouter
@@ -146,6 +147,19 @@ async def run_meeting(
         project=payload.project,
     )
 
+    # Recorded before any agent sees the transcript, so the flag exists even
+    # if the run later fails. Detection never blocks: the defence is that the
+    # agents reading this text have no tools, and refusing to process a
+    # meeting because a sentence looked odd is a worse product.
+    flags = injection.scan(payload.transcript)
+    if flags and not meeting.injection_flags:
+        meeting.injection_flags = [flag.as_dict() for flag in flags]
+        log.warning(
+            "security.injection_flagged",
+            meeting_id=str(meeting.id),
+            kinds=sorted({flag.kind for flag in flags}),
+        )
+
     enrolled = await _enrol_speakers(
         session,
         workspace_id=workspace.id,
@@ -176,6 +190,7 @@ async def run_meeting(
             meeting_title=payload.title,
             workspace_id=workspace.id,
             reused_meeting=not is_new,
+            injection_note=injection.summarise(flags),
         ),
         media_type="text/event-stream",
         headers={
@@ -202,6 +217,7 @@ async def _stream_run(
     meeting_title: str,
     workspace_id: uuid.UUID,
     reused_meeting: bool,
+    injection_note: str = "",
 ) -> AsyncIterator[str]:
     """Drive the graph, forwarding every agent event to the browser.
 
@@ -227,6 +243,12 @@ async def _stream_run(
             "models": router_.describe()["tiers"],
         },
     )
+
+    if injection_note:
+        yield _sse(
+            "team_report",
+            {"type": "team_report", "node": "security", "line": injection_note},
+        )
 
     async def drive() -> MeetingState:
         async with factory() as session:

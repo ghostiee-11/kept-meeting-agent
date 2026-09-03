@@ -1,0 +1,6 @@
+preeya so i think the migration plan is basically done i can get it over to you by thursday
+meara ok and adit what about the rate limiter
+addit merged it yesterday ill write the runbook by end of week
+meara good and the export timeout thing
+sanna two escalations ill pull numbers for thursday
+meara right we're keeping friday release not moving to monday
