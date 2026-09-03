@@ -262,6 +262,8 @@ function EvidenceSheet({
                 ))}
               </Field>
 
+              <Timeline commitmentId={commitment.id} />
+
               <Field label="Owner">
                 <p className="t-data">
                   {commitment.owner ?? "nobody yet"}{" "}
@@ -337,5 +339,115 @@ function Field({
       <p className="t-eyebrow">{label}</p>
       {children}
     </section>
+  );
+}
+
+interface TimelineEvent {
+  type: string;
+  actor: string;
+  actor_kind: string;
+  payload: Record<string, unknown>;
+  at: string;
+}
+
+interface TimelineData {
+  original_due_date: string | null;
+  due_date: string | null;
+  slip_count: number;
+  silence_streak: number;
+  events: TimelineEvent[];
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  created: "Extracted from a meeting",
+  owner_assigned: "Owner set",
+  deadline_set: "Deadline set",
+  clarification_requested: "Question raised",
+  slipped: "Promised again with a new date",
+  progressed: "Reported as progressing",
+  completed: "Done",
+  blocked: "Blocked",
+  unmentioned: "Nobody mentioned it",
+  task_created: "Task created",
+};
+
+/**
+ * The append-only history of one promise, across every meeting it appeared in.
+ *
+ * This is what makes slippage a fact rather than a number: three consecutive
+ * "promised again with a new date" entries, each stamped with who said so and
+ * whether it was a person or an agent, is an argument nobody can wave away.
+ */
+function Timeline({ commitmentId }: { commitmentId: string }) {
+  const [data, setData] = useState<TimelineData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<TimelineData>(`/commitments/${commitmentId}/timeline`)
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch(() => {
+        // A missing timeline is not worth an error state in a drawer that is
+        // already showing the commitment itself.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [commitmentId]);
+
+  if (!data || data.events.length === 0) return null;
+
+  return (
+    <Field
+      label={
+        data.slip_count > 0
+          ? `History (moved ${data.slip_count}\u00d7)`
+          : "History"
+      }
+    >
+      <ol className="mt-1">
+        {data.events.map((event, index) => (
+          <li
+            key={index}
+            className="border-rule border-b py-1.5 last:border-b-0"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[0.8125rem]">
+                {EVENT_LABEL[event.type] ?? event.type.replace(/_/g, " ")}
+              </span>
+              <span className="t-data text-paper-muted shrink-0">
+                {new Date(event.at).toLocaleDateString()}
+              </span>
+            </div>
+            <p className="t-data text-paper-muted">
+              {event.actor}
+              <span
+                className={
+                  event.actor_kind === "human"
+                    ? "text-kept"
+                    : "text-paper-muted"
+                }
+              >
+                {" "}
+                · {event.actor_kind}
+              </span>
+              {typeof event.payload.new_due === "string" && (
+                <span className="text-debt">
+                  {" "}
+                  · now {event.payload.new_due}
+                </span>
+              )}
+            </p>
+          </li>
+        ))}
+      </ol>
+      {data.original_due_date && data.original_due_date !== data.due_date && (
+        <p className="text-debt mt-2 text-[0.8125rem]">
+          Originally due {data.original_due_date}, now{" "}
+          {data.due_date ?? "no date"}.
+        </p>
+      )}
+    </Field>
   );
 }

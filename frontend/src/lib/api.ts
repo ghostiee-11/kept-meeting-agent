@@ -81,6 +81,24 @@ export interface CommunicationOut {
   created_at: string;
 }
 
+export interface Clarification {
+  id: string;
+  question: string;
+  options: Array<Record<string, unknown>>;
+  evidence: Array<Record<string, unknown>>;
+  status: string;
+  commitment_id: string | null;
+  commitment_text: string | null;
+  asked_at: string;
+}
+
+export interface Resolution {
+  id: string;
+  status: string;
+  applied: Record<string, string | null>;
+  commitment_status: string | null;
+}
+
 export interface PersonSummary {
   id: string;
   name: string;
