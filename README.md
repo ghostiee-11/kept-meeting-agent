@@ -49,6 +49,14 @@ An LLM supervisor handles the open-ended routing. Within each team, deterministi
 
 Read the design choices and trade-offs in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The agent responsibilities are in [docs/AGENTS.md](docs/AGENTS.md).
 
+<details>
+<summary>How Kept keeps AI output reviewable</summary>
+
+![Kept trust path: transcript through two reviews and verification, then either human clarification or a confirmed task, into the audit ledger](docs/assets/kept-trust-path.png)
+
+Two independent passes find and challenge candidates. A code gate verifies the evidence. Uncertain work waits for a human rather than becoming a guessed task.
+</details>
+
 ## Evidence, not claims
 
 The checked-in [evaluation](docs/EVALUATION.md) measures extraction, ownership,
