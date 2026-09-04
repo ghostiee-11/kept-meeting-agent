@@ -1,0 +1,39 @@
+name: Keep backend warm
+
+on:
+  schedule:
+    # Render free instances sleep after 15 minutes idle. GitHub schedules can
+    # drift, so leave a five-minute buffer.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-backend-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Wake API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ vars.API_URL || 'https://kept-api-3lq6.onrender.com' }}
+    steps:
+      - name: Request health endpoint
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5 6; do
+            if curl --fail --silent --show-error --max-time 60 "${API_URL}/health" > health.json; then
+              python3 -c 'import json; print(json.load(open("health.json"))["status"])'
+              exit 0
+            fi
+            echo "Backend not awake yet (attempt ${attempt}), waiting."
+            sleep 20
+          done
+
+          echo "::error::Backend did not respond to /health after two minutes."
+          exit 1
