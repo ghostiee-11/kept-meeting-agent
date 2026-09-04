@@ -43,7 +43,7 @@ assign a task to the wrong person. Kept refuses that trade.
 
 An LLM supervisor handles the open-ended routing. Within each team, deterministic code handles exact work: quote verification, dates, roster lookup, and risk scoring. Models handle language only.
 
-![Kept architecture: transcript through verification, resolution, execution, a human clarification path, and a meeting ledger feedback loop](docs/assets/kept-architecture.png)
+![Kept multi-agent architecture: Chief of Staff routes Intelligence, Resolution, History, and Execution agents into verified commitments, tasks, human questions, and a meeting ledger](docs/assets/kept-agent-topology-v2.png)
 
 **Left to right:** transcript intake, independent extraction and review, grounding plus owner/date resolution, task creation, and the cross-meeting ledger. The lower route is the human clarification path. The loop checks the next meeting for progress or slippage.
 
