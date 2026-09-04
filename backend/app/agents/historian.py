@@ -373,6 +373,14 @@ def _apply(
     timezone: str,
 ) -> None:
     """Update the ledger row, and append to its history."""
+    if matched.id in result.matched_ids:
+        log.warning(
+            "historian.duplicate_verdict",
+            commitment_id=str(matched.id),
+            meeting_id=str(meeting_id),
+        )
+        return
+
     outcome = _outcome_of(verdict.outcome)
     result.matched_ids.add(matched.id)
     matched.last_seen_meeting_id = meeting_id
