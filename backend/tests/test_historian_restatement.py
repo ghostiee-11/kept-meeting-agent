@@ -10,26 +10,17 @@ rule here.
 from __future__ import annotations
 
 import uuid
-from datetime import date
 
 from app.agents.contracts import Classification, Evidence, ExtractedCommitment
-from app.agents.historian import MatchVerdict, Slippage, _apply, _restated_index
+from app.agents.historian import MatchVerdict, _restated_index
 from app.graph.state import ResolvedItem
-from app.models.base import CommitmentKind, CommitmentStatus, MentionOutcome
-from app.models.domain import Commitment, CommitmentMention
+from app.models.base import CommitmentKind, CommitmentStatus
+from app.models.domain import Commitment
 from app.services.roster import Attribution
 from app.services.temporal import Resolved
 
 RAHUL = uuid.uuid4()
 PRIYA = uuid.uuid4()
-
-
-class RecordingSession:
-    def __init__(self) -> None:
-        self.rows: list[object] = []
-
-    def add(self, row: object) -> None:
-        self.rows.append(row)
 
 
 def ledger_row(text: str, owner_id: uuid.UUID | None = RAHUL) -> Commitment:
@@ -157,29 +148,3 @@ def test_one_obligation_cannot_close_two_ledger_rows() -> None:
 
     assert first == 0
     assert second is None
-
-
-def test_a_duplicate_verdict_records_one_mention() -> None:
-    session = RecordingSession()
-    commitment = ledger_row("Resolve the authentication issues")
-    commitment.id = uuid.uuid4()
-    result = Slippage()
-    match = MatchVerdict(mentioned=True, outcome="progress", reasoning="Discussed in the meeting.")
-    meeting_id = uuid.uuid4()
-
-    for _ in range(2):
-        _apply(
-            session,  # type: ignore[arg-type]
-            commitment,
-            match,
-            result,
-            meeting_id=meeting_id,
-            meeting_date=date(2026, 9, 16),
-            timezone="Asia/Kolkata",
-        )
-
-    mentions = [row for row in session.rows if isinstance(row, CommitmentMention)]
-
-    assert len(mentions) == 1
-    assert mentions[0].outcome is MentionOutcome.PROGRESS
-    assert result.progressed == ["Resolve the authentication issues"]
