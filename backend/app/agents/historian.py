@@ -38,6 +38,8 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from pydantic import BaseModel, Field
+from sqlalchemy import update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import prompts
@@ -219,7 +221,7 @@ async def reconcile(
             if restated is not None:
                 result.restated.add(restated)
 
-            _apply(
+            await _apply(
                 session,
                 commitment,
                 verdict,
@@ -229,7 +231,7 @@ async def reconcile(
                 timezone=timezone,
             )
 
-    _record_silence(session, existing, result, meeting_id=meeting_id, as_of=meeting_date)
+    await _record_silence(session, existing, result, meeting_id=meeting_id, as_of=meeting_date)
 
     trace.record(
         "historian",
@@ -362,7 +364,62 @@ def _restated_index(
     return index
 
 
-def _apply(
+async def _record_mention(
+    session: AsyncSession,
+    *,
+    commitment: Commitment,
+    meeting_id: uuid.UUID,
+    outcome: MentionOutcome,
+    reasoning: str,
+) -> bool:
+    """Write what this meeting said about this commitment. Returns whether it
+    is the first time.
+
+    One row per (commitment, meeting) pair, enforced by a unique constraint,
+    which a re-run of the same meeting used to violate outright: the Historian
+    writes during the graph, before the persistence layer's repeat-run guard
+    can decide the meeting has already been processed.
+
+    Rewriting rather than refusing is the right semantic. If the same
+    transcript is read again, the newer reading is the better one, and a
+    reviewer clicking a sample twice should not see a 500.
+
+    The return value matters more than it looks: it stops `silence_streak`
+    counting the same silence twice. That number feeds risk, and a re-run
+    inflating it would make the system lie about how long something has gone
+    unmentioned.
+    """
+    created = await session.scalar(
+        insert(CommitmentMention)
+        .values(
+            commitment_id=commitment.id,
+            meeting_id=meeting_id,
+            outcome=outcome,
+            reasoning=reasoning,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[
+                CommitmentMention.commitment_id,
+                CommitmentMention.meeting_id,
+            ]
+        )
+        .returning(CommitmentMention.id)
+    )
+    if created is not None:
+        return True
+
+    await session.execute(
+        update(CommitmentMention)
+        .where(
+            CommitmentMention.commitment_id == commitment.id,
+            CommitmentMention.meeting_id == meeting_id,
+        )
+        .values(outcome=outcome, reasoning=reasoning)
+    )
+    return False
+
+
+async def _apply(
     session: AsyncSession,
     matched: Commitment,
     verdict: MatchVerdict,
@@ -447,17 +504,16 @@ def _apply(
         result.progressed.append(matched.text)
         _event(session, matched, meeting_id, EventType.PROGRESSED, {"reason": verdict.reasoning})
 
-    session.add(
-        CommitmentMention(
-            commitment_id=matched.id,
-            meeting_id=meeting_id,
-            outcome=outcome,
-            reasoning=verdict.reasoning,
-        )
+    await _record_mention(
+        session,
+        commitment=matched,
+        meeting_id=meeting_id,
+        outcome=outcome,
+        reasoning=verdict.reasoning,
     )
 
 
-def _record_silence(
+async def _record_silence(
     session: AsyncSession,
     existing: list[Commitment],
     result: Slippage,
@@ -467,19 +523,23 @@ def _record_silence(
 ) -> None:
     """The finding nobody else produces: promises that went unmentioned."""
     for commitment in ledger.unmentioned(existing, result.matched_ids, as_of=as_of):
+        first_time = await _record_mention(
+            session,
+            commitment=commitment,
+            meeting_id=meeting_id,
+            outcome=MentionOutcome.UNMENTIONED,
+            reasoning=f"Due {commitment.due_date} and not raised in this meeting.",
+        )
+        if not first_time:
+            # This meeting has been read before. Counting its silence again
+            # would make the commitment look staler than it is.
+            continue
+
         commitment.silence_streak += 1
         days = (as_of - commitment.due_date).days if commitment.due_date else 0
         result.unmentioned.append(
             f"{commitment.text} ({commitment.owner.name if commitment.owner else 'unowned'}) "
             f"— {days} days past due, unmentioned for {commitment.silence_streak}"
-        )
-        session.add(
-            CommitmentMention(
-                commitment_id=commitment.id,
-                meeting_id=meeting_id,
-                outcome=MentionOutcome.UNMENTIONED,
-                reasoning=f"Due {commitment.due_date} and not raised in this meeting.",
-            )
         )
         _event(
             session,
